@@ -1,0 +1,1580 @@
+/**
+ * PAYABLE VOUCHER 2026 - Vouchers Module (CLEAN)
+ * - No duplicate functions
+ * - Deletion workflow uses modals (reason required)
+ * - Enhanced release workflow (2 steps + auto CN + CPO purpose)
+ */
+
+const Vouchers = {
+  // ===== State =====
+  vouchers: [],
+  currentPage: 1,
+  pageSize: 50,
+  totalCount: 0,
+  totalPages: 0,
+
+  selectedVoucher: null,
+  selectedVouchers: [],
+
+  categories: [],
+  categoriesLoaded: false,
+
+  permissions: null,
+  isEditMode: false,
+
+  filters: {
+    status: 'All',
+    category: 'All',
+    searchTerm: ''
+  },
+
+  // Pending deletions
+  pendingDeletionsLoaded: false,
+  pendingDeletions: [],
+
+  // Delete workflow targets
+  deleteTargetVoucher: null,
+  rejectTargetVoucher: null,
+
+  // Enhanced release workflow
+  isPayableUnit: false,
+  isCPO: false,
+  releaseSearchResults: [],
+  selectedForRelease: [],
+
+  // ===== Init =====
+  async init() {
+    const isAuth = await Auth.requireAuth();
+    if (!isAuth) return;
+
+    this.permissions = await Auth.getPermissions();
+    this.setupUI();
+
+    if (!this.categoriesLoaded) {
+      await this.loadCategories();
+      this.categoriesLoaded = true;
+    }
+
+    await this.loadVouchers();
+    await this.loadPendingDeletions(); // approvers only
+
+    this.setupEventListeners();
+    this.handleUrlParams();
+  },
+
+  setupUI() {
+    const user = Auth.getUser();
+
+    // Sidebar
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.innerHTML = Components.getSidebar('vouchers');
+
+    // Buttons visibility
+    const newVoucherBtn = document.getElementById('newVoucherBtn');
+    const lookupBtn = document.getElementById('lookupBtn');
+
+    if (newVoucherBtn) {
+      newVoucherBtn.classList.toggle('hidden', !(this.permissions && this.permissions.canCreateVoucher));
+    }
+    if (lookupBtn) {
+      lookupBtn.classList.toggle('hidden', !(this.permissions && this.permissions.canLookup));
+    }
+
+    // CPO actions
+    const cpoActions = document.getElementById('cpoActions');
+    if (cpoActions && user) {
+      const show = [CONFIG.ROLES.CPO, CONFIG.ROLES.ADMIN, CONFIG.ROLES.PAYABLE_STAFF, CONFIG.ROLES.PAYABLE_HEAD].includes(user.role);
+      cpoActions.style.display = show ? 'block' : 'none';
+    }
+  },
+
+  handleUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+
+    if (urlParams.get('new') === 'true') this.openVoucherForm();
+    if (urlParams.get('lookup') === 'true') this.openLookupModal();
+
+    const editRow = urlParams.get('edit');
+    if (editRow) this.editVoucher(parseInt(editRow, 10));
+
+    const filter = urlParams.get('filter');
+    if (filter) {
+      const map = { pending: 'Pending Deletion', unpaid: 'Unpaid', paid: 'Paid' };
+      if (map[filter]) {
+        const statusFilter = document.getElementById('statusFilter');
+        if (statusFilter) statusFilter.value = map[filter];
+        this.filters.status = map[filter];
+        this.currentPage = 1;
+        this.loadVouchers();
+      }
+    }
+  },
+
+  // ===== Categories =====
+  async loadCategories() {
+    const result = await API.getCategories();
+    if (result.success) {
+      this.categories = result.categories || [];
+      this.populateCategoryDropdowns();
+    }
+  },
+
+  populateCategoryDropdowns() {
+    // Dropdowns on forms
+    const dropdowns = document.querySelectorAll('.category-select');
+    dropdowns.forEach(dd => {
+      const cur = dd.value;
+      dd.innerHTML = '<option value="">Select Category</option>';
+      this.categories.forEach(cat => dd.innerHTML += `<option value="${cat}">${cat}</option>`);
+      if (cur) dd.value = cur;
+    });
+
+    // Filter dropdown
+    const filterDropdown = document.getElementById('categoryFilter');
+    if (filterDropdown) {
+      filterDropdown.innerHTML = '<option value="All">All Categories</option>';
+      this.categories.forEach(cat => filterDropdown.innerHTML += `<option value="${cat}">${cat}</option>`);
+    }
+
+    // Release dropdown category filter
+    const releaseCat = document.getElementById('releaseCategoryFilter');
+    if (releaseCat) {
+      // keep "All"
+      const cur = releaseCat.value;
+      releaseCat.innerHTML = '<option value="All">All Categories</option>';
+      this.categories.forEach(cat => releaseCat.innerHTML += `<option value="${cat}">${cat}</option>`);
+      if (cur) releaseCat.value = cur;
+    }
+  },
+
+  // ===== Vouchers list =====
+  async loadVouchers() {
+    this.showLoading(true);
+
+    try {
+      const result = await API.getVouchers('2026', this.filters, this.currentPage, this.pageSize);
+
+      if (!result.success) {
+        Utils.showToast(result.error || 'Failed to load vouchers', 'error');
+        return;
+      }
+
+      this.vouchers = result.vouchers || [];
+      this.totalCount = result.totalCount || 0;
+      this.totalPages = result.totalPages || 0;
+
+      this.renderVoucherList();
+    } catch (e) {
+      console.error('loadVouchers error:', e);
+      Utils.showToast('Error loading vouchers', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  renderVoucherList() {
+    const container = document.getElementById('vouchersList');
+    if (!container) return;
+
+    const countEl = document.getElementById('voucherCount');
+    if (countEl) {
+      countEl.textContent = `${this.totalCount} voucher(s) (Page ${this.currentPage} of ${this.totalPages || 1})`;
+    }
+
+    if (!this.vouchers.length) {
+      container.innerHTML = Components.getEmptyState('No vouchers found', 'fa-file-invoice');
+      const pg = document.getElementById('paginationContainer');
+      if (pg) pg.innerHTML = '';
+      return;
+    }
+
+    const user = Auth.getUser();
+    const canSelect = user && [
+        CONFIG.ROLES.PAYABLE_STAFF,
+        CONFIG.ROLES.PAYABLE_HEAD,
+        CONFIG.ROLES.ADMIN,
+        CONFIG.ROLES.CPO        
+    ].includes(user.role);
+
+    let html = `
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              ${canSelect ? '<th><input type="checkbox" id="selectAll"></th>' : ''}
+              <th>S/N</th>
+              <th>Voucher No.</th>
+              <th>Payee</th>
+              <th>Particular</th>
+              <th>Gross Amount</th>
+              <th>Category</th>
+              <th>Control No.</th>
+              <th>Status</th>
+              <th>Pmt Month</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    const startSN = (this.currentPage - 1) * this.pageSize;
+
+    this.vouchers.forEach((v, idx) => {
+      const sn = startSN + idx + 1;
+      html += `
+        <tr data-row="${v.rowIndex}">
+          ${canSelect ? `<td><input type="checkbox" class="voucher-checkbox" value="${v.rowIndex}"></td>` : ''}
+          <td>${sn}</td>
+          <td><strong>${v.accountOrMail || '-'}</strong></td>
+          <td title="${v.payee || ''}">${Utils.truncate(v.payee || '', 20)}</td>
+          <td title="${v.particular || ''}">${Utils.truncate(v.particular || '', 25)}</td>
+          <td>${Utils.formatCurrency(v.grossAmount || 0)}</td>
+          <td>${v.categories || '-'}</td>
+          <td>${v.controlNumber || '<span class="text-muted">-</span>'}</td>
+          <td>${Utils.getStatusBadge(v.status || '')}</td>
+          <td>${v.pmtMonth || '-'}</td>
+          <td>
+            <div class="action-buttons">
+              <button class="btn btn-sm btn-secondary" data-action="view" data-row="${v.rowIndex}" title="View">
+                <i class="fas fa-eye"></i>
+              </button>
+              ${this.getActionButtons(v)}
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+
+    // bind checkbox handlers + view handlers (avoids inline duplicate binding issues)
+    if (canSelect) {
+      const selectAll = document.getElementById('selectAll');
+      if (selectAll) {
+        selectAll.addEventListener('change', () => {
+          document.querySelectorAll('.voucher-checkbox').forEach(cb => cb.checked = selectAll.checked);
+          this.updateSelection();
+        });
+      }
+      document.querySelectorAll('.voucher-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => this.updateSelection());
+      });
+    }
+
+    container.querySelectorAll('button[data-action="view"]').forEach(btn => {
+      btn.addEventListener('click', () => this.viewVoucher(parseInt(btn.dataset.row, 10)));
+    });
+
+    this.renderPagination();
+  },
+
+  updateSelection() {
+    const checked = document.querySelectorAll('.voucher-checkbox:checked');
+    this.selectedVouchers = Array.from(checked).map(cb => parseInt(cb.value, 10));
+  },
+
+  getActionButtons(voucher) {
+    const perms = this.permissions || {};
+    const user = Auth.getUser();
+    if (!user) return '';
+
+    let buttons = '';
+
+    // Edit
+    if (perms.canEditVoucher && voucher.status !== 'Pending Deletion') {
+      const canEdit = (voucher.status === 'Unpaid') ||
+        user.role === CONFIG.ROLES.ADMIN ||
+        user.role === CONFIG.ROLES.PAYABLE_HEAD ||
+        user.role === CONFIG.ROLES.CPO;
+
+      if (canEdit) {
+        buttons += `
+          <button class="btn btn-sm btn-primary" onclick="Vouchers.editVoucher(${voucher.rowIndex})" title="Edit">
+            <i class="fas fa-edit"></i>
+          </button>
+        `;
+      }
+    }
+
+    // Status update
+    if (perms.canUpdateStatus && voucher.status !== 'Pending Deletion') {
+      buttons += `
+        <button class="btn btn-sm btn-success" onclick="Vouchers.openStatusModal(${voucher.rowIndex})" title="Update Status">
+          <i class="fas fa-check-circle"></i>
+        </button>
+      `;
+    }
+
+    // Deletion workflow
+    if (voucher.status === 'Pending Deletion') {
+      if (perms.canApproveDelete) {
+        buttons += `
+          <button class="btn btn-sm btn-success" onclick="Vouchers.approveDelete(${voucher.rowIndex})" title="Approve Delete">
+            <i class="fas fa-check"></i>
+          </button>
+          <button class="btn btn-sm btn-warning" onclick="Vouchers.rejectDelete(${voucher.rowIndex})" title="Reject Delete">
+            <i class="fas fa-times"></i>
+          </button>
+        `;
+      }
+      if (perms.canRequestDelete) {
+        buttons += `
+          <button class="btn btn-sm btn-secondary" onclick="Vouchers.cancelDeleteRequest(${voucher.rowIndex})" title="Undo Request">
+            <i class="fas fa-undo"></i>
+          </button>
+        `;
+      }
+    } else {
+      if (perms.canRequestDelete) {
+        buttons += `
+          <button class="btn btn-sm btn-danger" onclick="Vouchers.requestDelete(${voucher.rowIndex})" title="Request Deletion">
+            <i class="fas fa-trash"></i>
+          </button>
+        `;
+      }
+    }
+
+    return buttons;
+  },
+
+  renderPagination() {
+    const container = document.getElementById('paginationContainer');
+    if (!container) return;
+
+    if (this.totalPages <= 1) {
+      container.innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="pagination">
+        <button class="btn btn-sm btn-secondary" ${this.currentPage === 1 ? 'disabled' : ''} onclick="Vouchers.goToPage(1)">
+          <i class="fas fa-angle-double-left"></i>
+        </button>
+        <button class="btn btn-sm btn-secondary" ${this.currentPage === 1 ? 'disabled' : ''} onclick="Vouchers.goToPage(${this.currentPage - 1})">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+
+        <span class="pagination-info" style="padding: 5px 15px;">Page ${this.currentPage} of ${this.totalPages}</span>
+
+        <button class="btn btn-sm btn-secondary" ${this.currentPage === this.totalPages ? 'disabled' : ''} onclick="Vouchers.goToPage(${this.currentPage + 1})">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+        <button class="btn btn-sm btn-secondary" ${this.currentPage === this.totalPages ? 'disabled' : ''} onclick="Vouchers.goToPage(${this.totalPages})">
+          <i class="fas fa-angle-double-right"></i>
+        </button>
+
+        <select class="form-control" style="width: auto; margin-left: 15px;" onchange="Vouchers.changePageSize(this.value)">
+          <option value="25" ${this.pageSize === 25 ? 'selected' : ''}>25 per page</option>
+          <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50 per page</option>
+          <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100 per page</option>
+        </select>
+      </div>
+    `;
+  },
+
+  goToPage(page) {
+    if (page < 1 || page > this.totalPages || page === this.currentPage) return;
+    this.currentPage = page;
+    this.loadVouchers();
+  },
+
+  changePageSize(size) {
+    this.pageSize = parseInt(size, 10);
+    this.currentPage = 1;
+    this.loadVouchers();
+  },
+
+  applyFilters() {
+    this.filters.status = document.getElementById('statusFilter')?.value || 'All';
+    this.filters.category = document.getElementById('categoryFilter')?.value || 'All';
+    this.filters.searchTerm = document.getElementById('searchInput')?.value.trim() || '';
+    this.currentPage = 1;
+    this.loadVouchers();
+  },
+
+  clearFilters() {
+    const s = document.getElementById('statusFilter'); if (s) s.value = 'All';
+    const c = document.getElementById('categoryFilter'); if (c) c.value = 'All';
+    const q = document.getElementById('searchInput'); if (q) q.value = '';
+    this.filters = { status: 'All', category: 'All', searchTerm: '' };
+    this.currentPage = 1;
+    this.loadVouchers();
+  },
+
+    // ===== View voucher (with payee unpaid total) =====
+  async viewVoucher(rowIndex) {
+    const voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+    if (!voucher) {
+      Utils.showToast('Voucher not found', 'error');
+      return;
+    }
+
+    this.selectedVoucher = voucher;
+    this.showLoading(true);
+
+    let totalUnpaidForPayee = 0;
+    let unpaidCount = 0;
+
+    try {
+      // NOTE: backend paging may limit; this is a best-effort quick sum
+      const result = await API.getVouchers('2026', { searchTerm: voucher.payee }, 1, 100);
+      if (result.success) {
+        (result.vouchers || []).forEach(v => {
+          if (String(v.payee || '').trim() === String(voucher.payee || '').trim() && v.status === 'Unpaid') {
+            totalUnpaidForPayee += Number(v.grossAmount || 0);
+            unpaidCount++;
+          }
+        });
+      }
+    } catch (e) {
+      console.error('payee unpaid calc error:', e);
+    }
+
+    this.showLoading(false);
+
+    const modal = document.getElementById('viewVoucherModal');
+    const content = document.getElementById('viewVoucherContent');
+
+    if (!modal || !content) return;
+
+    content.innerHTML = `
+      <div class="voucher-details">
+        <div class="detail-row">
+          <div class="detail-group"><label>Status</label><div>${Utils.getStatusBadge(voucher.status)}</div></div>
+          <div class="detail-group"><label>Payment Month</label><div>${voucher.pmtMonth || '-'}</div></div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-group"><label>Voucher Number</label><div><strong>${voucher.accountOrMail || '-'}</strong></div></div>
+          <div class="detail-group"><label>Control Number</label><div>${voucher.controlNumber || '-'}</div></div>
+        </div>
+
+        <div class="detail-group full-width"><label>Payee</label><div><strong>${voucher.payee || '-'}</strong></div></div>
+        <div class="detail-group full-width"><label>Particular</label><div>${voucher.particular || '-'}</div></div>
+
+        <div class="detail-row">
+          <div class="detail-group"><label>Contract Sum</label><div>${Utils.formatCurrency(voucher.contractSum || 0)}</div></div>
+          <div class="detail-group"><label>Gross Amount</label><div class="total-amount">${Utils.formatCurrency(voucher.grossAmount || 0)}</div></div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-group"><label>NET</label><div>${Utils.formatCurrency(voucher.net || 0)}</div></div>
+          <div class="detail-group"><label>VAT</label><div>${Utils.formatCurrency(voucher.vat || 0)}</div></div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-group"><label>WHT</label><div>${Utils.formatCurrency(voucher.wht || 0)}</div></div>
+          <div class="detail-group"><label>Stamp Duty</label><div>${Utils.formatCurrency(voucher.stampDuty || 0)}</div></div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-group"><label>Category</label><div>${voucher.categories || '-'}</div></div>
+          <div class="detail-group"><label>Account Type</label><div>${voucher.accountType || '-'}</div></div>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-group"><label>Date</label><div>${Utils.formatDate(voucher.date)}</div></div>
+          <div class="detail-group"><label>Old Voucher No.</label><div>${voucher.oldVoucherNumber || '-'}</div></div>
+        </div>
+
+        <div class="detail-group full-width" style="background: #fff3cd; padding: 15px; border-radius: var(--radius); margin-top: 15px;">
+          <label style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Total Unpaid for "${voucher.payee || ''}"</label>
+          <div style="font-size: 22px; font-weight: 700; color: #856404;">${Utils.formatCurrency(totalUnpaidForPayee)}</div>
+          <div style="font-size: 12px; color: #856404;">${unpaidCount} unpaid voucher(s) (limited lookup)</div>
+        </div>
+      </div>
+    `;
+
+    modal.classList.add('active');
+  },
+
+  // ===== Voucher form =====
+  openVoucherForm(voucher = null) {
+    this.isEditMode = !!voucher;
+    this.selectedVoucher = voucher;
+
+    const modal = document.getElementById('voucherFormModal');
+    const title = document.getElementById('voucherFormTitle');
+    const form = document.getElementById('voucherForm');
+    if (!modal || !title || !form) return;
+
+    title.textContent = this.isEditMode ? 'Edit Voucher' : 'Create New Voucher';
+    form.reset();
+
+    this.populateCategoryDropdowns();
+
+    if (voucher) {
+      document.getElementById('formOldVoucherNumber').value = voucher.oldVoucherNumber || '';
+      document.getElementById('formPayee').value = voucher.payee || '';
+      document.getElementById('formAccountOrMail').value = voucher.accountOrMail || '';
+      document.getElementById('formParticular').value = voucher.particular || '';
+      document.getElementById('formContractSum').value = voucher.contractSum || '';
+      document.getElementById('formGrossAmount').value = voucher.grossAmount || '';
+      document.getElementById('formNet').value = voucher.net || '';
+      document.getElementById('formVat').value = voucher.vat || '';
+      document.getElementById('formWht').value = voucher.wht || '';
+      document.getElementById('formStampDuty').value = voucher.stampDuty || '';
+      document.getElementById('formCategories').value = voucher.categories || '';
+      document.getElementById('formAccountType').value = voucher.accountType || '';
+      document.getElementById('formDate').value = voucher.date || '';
+    } else {
+      document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
+    }
+
+    modal.classList.add('active');
+  },
+
+  async editVoucher(rowIndex) {
+    let voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+
+    if (!voucher) {
+      this.showLoading(true);
+      const result = await API.getVoucherByRow(rowIndex, '2026');
+      this.showLoading(false);
+      if (!result.success) {
+        Utils.showToast(result.error || 'Voucher not found', 'error');
+        return;
+      }
+      voucher = result.voucher;
+    }
+
+    this.openVoucherForm(voucher);
+  },
+
+  async saveVoucher() {
+    const payee = document.getElementById('formPayee').value.trim();
+    const accountOrMail = document.getElementById('formAccountOrMail').value.trim();
+
+    const gross = parseFloat(document.getElementById('formGrossAmount').value) || 0;
+    const vat = parseFloat(document.getElementById('formVat').value) || 0;
+    const wht = parseFloat(document.getElementById('formWht').value) || 0;
+    const stampDuty = parseFloat(document.getElementById('formStampDuty').value) || 0;
+    const net = gross - (vat + wht + stampDuty);
+
+    document.getElementById('formNet').value = net.toFixed(2);
+
+    if (!payee) return Utils.showToast('Payee name is required', 'error');
+    if (!accountOrMail) return Utils.showToast('Voucher Number is required', 'error');
+    if (!gross) return Utils.showToast('Gross amount is required', 'error');
+
+    const voucherData = {
+      payee,
+      accountOrMail,
+      particular: document.getElementById('formParticular').value.trim(),
+      contractSum: parseFloat(document.getElementById('formContractSum').value) || 0,
+      grossAmount: gross,
+      vat,
+      wht,
+      stampDuty,
+      net,
+      totalGross: gross,
+      categories: document.getElementById('formCategories').value,
+      oldVoucherNumber: document.getElementById('formOldVoucherNumber').value.trim(),
+      date: document.getElementById('formDate').value,
+      accountType: document.getElementById('formAccountType').value
+    };
+
+    this.showLoading(true);
+
+    try {
+      let result;
+      if (this.isEditMode && this.selectedVoucher) {
+        // preserve CN if backend expects it
+        voucherData.controlNumber = this.selectedVoucher.controlNumber || '';
+        result = await API.updateVoucher(this.selectedVoucher.rowIndex, voucherData);
+      } else {
+        voucherData.controlNumber = '';
+        result = await API.createVoucher(voucherData);
+      }
+
+      if (result.success) {
+        Utils.showToast(result.message || 'Voucher saved successfully', 'success');
+        this.closeModal('voucherFormModal');
+        await this.loadVouchers();
+      } else {
+        Utils.showToast(result.error || 'Failed to save voucher', 'error');
+      }
+    } catch (e) {
+      console.error('saveVoucher error:', e);
+      Utils.showToast('Error saving voucher', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  // ===== Lookup =====
+  openLookupModal() {
+    const modal = document.getElementById('lookupModal');
+    if (!modal) return;
+    document.getElementById('lookupVoucherNumber').value = '';
+    const res = document.getElementById('lookupResult');
+    if (res) {
+      res.innerHTML = '';
+      res.classList.add('hidden');
+    }
+    modal.classList.add('active');
+  },
+
+  async performLookup() {
+    const voucherNumber = document.getElementById('lookupVoucherNumber').value.trim();
+    if (!voucherNumber) return Utils.showToast('Please enter a voucher number', 'error');
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.lookupVoucher(voucherNumber);
+      const container = document.getElementById('lookupResult');
+      if (!container) return;
+
+      container.classList.remove('hidden');
+
+      if (!result.success) {
+        container.innerHTML = `<div class="alert alert-error">${result.error || 'Lookup failed'}</div>`;
+        return;
+      }
+
+      if (!result.found) {
+        container.innerHTML = `<div class="alert alert-warning">${result.message || 'Not found'}</div>`;
+        return;
+      }
+
+      // show found
+      this.lookupResult = result;
+      const v = result.voucher;
+
+      // Already revalidated?
+      if (result.alreadyRevalidated) {
+        container.innerHTML = `
+          <div class="alert alert-warning">
+            <strong>${result.message}</strong><br>
+            Existing Voucher: ${result.existingVoucherNumber || '-'}
+          </div>
+        `;
+        return;
+      }
+
+      // Paid cannot revalidate
+      if (!result.canRevalidate) {
+        container.innerHTML = `
+          <div class="alert alert-error">
+            <strong>${result.message}</strong><br>
+            ${result.reason || ''}
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="alert alert-success">
+          <strong>${result.message}</strong>
+          ${result.requiresAuthorization ? `<br><span class="text-warning">${result.warning || ''}</span>` : ''}
+        </div>
+
+        <div class="lookup-voucher-details">
+          <h4>Voucher Details</h4>
+          <p><strong>Payee:</strong> ${v.payee || '-'}</p>
+          <p><strong>Voucher No:</strong> ${v.accountOrMail || '-'}</p>
+          <p><strong>Particular:</strong> ${v.particular || '-'}</p>
+          <p><strong>Amount:</strong> ${Utils.formatCurrency(v.grossAmount || 0)}</p>
+          <p><strong>Status:</strong> ${Utils.getStatusBadge(v.status || '')}</p>
+        </div>
+
+        <button class="btn btn-primary" onclick="Vouchers.createFromLookup()" style="width:100%;margin-top:15px;">
+          <i class="fas fa-plus"></i> Revalidate This Voucher
+        </button>
+      `;
+    } catch (e) {
+      console.error('performLookup error:', e);
+      Utils.showToast('Error performing lookup', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  createFromLookup() {
+    if (!this.lookupResult || !this.lookupResult.voucher) {
+      Utils.showToast('No lookup result available', 'error');
+      return;
+    }
+
+    this.closeModal('lookupModal');
+
+    const v = this.lookupResult.voucher;
+    this.openVoucherForm();
+
+    setTimeout(() => {
+      document.getElementById('formOldVoucherNumber').value = v.accountOrMail || '';
+      document.getElementById('formPayee').value = v.payee || '';
+      document.getElementById('formParticular').value = v.particular || '';
+      document.getElementById('formContractSum').value = v.contractSum || '';
+      document.getElementById('formGrossAmount').value = v.grossAmount || '';
+      document.getElementById('formVat').value = v.vat || '';
+      document.getElementById('formWht').value = v.wht || '';
+      document.getElementById('formStampDuty').value = v.stampDuty || '';
+      document.getElementById('formCategories').value = v.categories || '';
+
+      const gross = parseFloat(v.grossAmount) || 0;
+      const vat = parseFloat(v.vat) || 0;
+      const wht = parseFloat(v.wht) || 0;
+      const stamp = parseFloat(v.stampDuty) || 0;
+      document.getElementById('formNet').value = (gross - (vat + wht + stamp)).toFixed(2);
+    }, 100);
+  },
+
+  async inlineLookup() {
+    const oldVN = document.getElementById('formOldVoucherNumber').value.trim();
+    if (!oldVN) return Utils.showToast('Enter an old voucher number first', 'warning');
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.lookupVoucher(oldVN);
+      if (result.success && result.found && result.canRevalidate) {
+        const v = result.voucher;
+
+        document.getElementById('formPayee').value = v.payee || '';
+        document.getElementById('formParticular').value = v.particular || '';
+        document.getElementById('formContractSum').value = v.contractSum || '';
+        document.getElementById('formGrossAmount').value = v.grossAmount || '';
+        document.getElementById('formVat').value = v.vat || '';
+        document.getElementById('formWht').value = v.wht || '';
+        document.getElementById('formStampDuty').value = v.stampDuty || '';
+        document.getElementById('formCategories').value = v.categories || '';
+
+        const gross = parseFloat(v.grossAmount) || 0;
+        const vat = parseFloat(v.vat) || 0;
+        const wht = parseFloat(v.wht) || 0;
+        const stamp = parseFloat(v.stampDuty) || 0;
+        document.getElementById('formNet').value = (gross - (vat + wht + stamp)).toFixed(2);
+
+        Utils.showToast(`Found in ${result.sourceYear}. Filled fields.`, 'success');
+      } else {
+        Utils.showToast(result.message || 'Voucher not found / cannot revalidate', 'warning');
+      }
+    } catch (e) {
+      console.error('inlineLookup error:', e);
+      Utils.showToast('Lookup failed', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  // ===== Status =====
+  openStatusModal(rowIndex) {
+  const voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+  if (!voucher) return Utils.showToast('Voucher not found', 'error');
+
+  this.selectedVoucher = voucher;
+
+  document.getElementById('statusVoucherInfo').innerHTML = `
+    <p><strong>Voucher:</strong> ${voucher.accountOrMail || '-'}</p>
+    <p><strong>Payee:</strong> ${voucher.payee || '-'}</p>
+    <p><strong>Amount:</strong> ${Utils.formatCurrency(voucher.grossAmount || 0)}</p>
+  `;
+
+  const user = Auth.getUser();
+  const canSetMonth = user && (user.role === CONFIG.ROLES.CPO || user.role === CONFIG.ROLES.ADMIN);
+
+  // Always show the group
+  const pmtMonthGroup = document.getElementById('pmtMonthGroup');
+  if (pmtMonthGroup) pmtMonthGroup.style.display = 'block';
+
+    // Set values
+    document.getElementById('newStatus').value = voucher.status || 'Unpaid';
+    document.getElementById('newPmtMonth').value = voucher.pmtMonth || '';
+
+    // Only CPO/Admin can edit payment month
+    document.getElementById('newPmtMonth').disabled = !canSetMonth;
+
+    // Require month only when setting Paid (and only if canSetMonth)
+    const statusEl = document.getElementById('newStatus');
+    const monthEl = document.getElementById('newPmtMonth');
+
+    const updateMonthRequirement = () => {
+        const st = statusEl.value;
+        monthEl.required = (canSetMonth && st === 'Paid');
+    };
+
+    statusEl.onchange = updateMonthRequirement;
+    updateMonthRequirement();
+
+    document.getElementById('statusModal').classList.add('active');
+    },
+
+    async saveStatus() {
+    if (!this.selectedVoucher) return;
+
+    const user = Auth.getUser();
+    const canSetMonth = user && (user.role === CONFIG.ROLES.CPO || user.role === CONFIG.ROLES.ADMIN);
+
+    const status = document.getElementById('newStatus').value;
+    const pmtMonth = canSetMonth ? document.getElementById('newPmtMonth').value : null;
+
+    // Enforce: Paid must have Payment Month (CPO/Admin)
+    if (canSetMonth && status === 'Paid' && (!pmtMonth || !pmtMonth.trim())) {
+        Utils.showToast('Payment Month is required when status is PAID', 'error');
+        return;
+    }
+
+    this.showLoading(true);
+
+    try {
+        const result = await API.updateStatus(this.selectedVoucher.rowIndex, status, pmtMonth);
+
+        if (result.success) {
+        Utils.showToast(result.message || 'Status updated', 'success');
+        this.closeModal('statusModal');
+        await this.loadVouchers();
+        } else {
+        Utils.showToast(result.error || 'Failed to update status', 'error');
+        }
+    } catch (e) {
+        console.error('saveStatus error:', e);
+        Utils.showToast('Error updating status', 'error');
+    } finally {
+        this.showLoading(false);
+    }
+    },
+
+  openBatchStatusModal() {
+    document.getElementById('batchControlNumber').value = '';
+    document.getElementById('batchStatus').value = 'Paid';
+    document.getElementById('batchPmtMonth').value = '';
+    document.getElementById('batchStatusModal').classList.add('active');
+  },
+
+  async saveBatchStatus() {
+    const cn = document.getElementById('batchControlNumber').value.trim();
+    if (!cn) return Utils.showToast('Please enter a control number', 'error');
+
+    const status = document.getElementById('batchStatus').value;
+    const pmtMonth = document.getElementById('batchPmtMonth').value;
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.batchUpdateStatus(cn, status, pmtMonth);
+      if (result.success) {
+        Utils.showToast(result.message, 'success');
+        this.closeModal('batchStatusModal');
+        await this.loadVouchers();
+      } else {
+        Utils.showToast(result.error || 'Batch update failed', 'error');
+      }
+    } catch (e) {
+      console.error('saveBatchStatus error:', e);
+      Utils.showToast('Error updating batch status', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  // ===== Assign control number (manual) =====
+  openAssignControlModal() {
+    if (!this.selectedVouchers.length) return Utils.showToast('Please select vouchers first', 'warning');
+    document.getElementById('selectedCount').textContent = this.selectedVouchers.length;
+    document.getElementById('newControlNumber').value = '';
+    document.getElementById('assignControlModal').classList.add('active');
+  },
+
+  async assignControlNumber() {
+    const cn = document.getElementById('newControlNumber').value.trim();
+    if (!cn) return Utils.showToast('Please enter a control number', 'error');
+    if (!this.selectedVouchers.length) return Utils.showToast('No vouchers selected', 'error');
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.assignControlNumber(this.selectedVouchers, cn);
+      if (result.success) {
+        Utils.showToast(result.message, 'success');
+        this.closeModal('assignControlModal');
+        this.selectedVouchers = [];
+        await this.loadVouchers();
+      } else {
+        Utils.showToast(result.error || 'Assignment failed', 'error');
+      }
+    } catch (e) {
+      console.error('assignControlNumber error:', e);
+      Utils.showToast('Error assigning control number', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  // ===== Deletion workflow (MODAL-BASED) =====
+  async requestDelete(rowIndex) {
+    const voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+    if (!voucher) return Utils.showToast('Voucher not found', 'error');
+
+    this.deleteTargetVoucher = voucher;
+
+    const isReleased = voucher.controlNumber && String(voucher.controlNumber).trim() !== '';
+
+    const info = document.getElementById('deleteVoucherInfo');
+    const reasonEl = document.getElementById('deleteReason');
+    const approvalText = document.getElementById('deleteApprovalText');
+
+    if (!info || !reasonEl || !approvalText) {
+      Utils.showToast('Delete modal elements missing in vouchers.html', 'error');
+      return;
+    }
+
+    info.innerHTML = `
+      <p><strong>Voucher No:</strong> ${voucher.accountOrMail || '-'}</p>
+      <p><strong>Payee:</strong> ${voucher.payee || '-'}</p>
+      <p><strong>Amount:</strong> ${Utils.formatCurrency(voucher.grossAmount || 0)}</p>
+      <p><strong>Status:</strong> ${Utils.getStatusBadge(voucher.status || '')}</p>
+      ${isReleased ? `<p><strong>Control No:</strong> ${voucher.controlNumber}</p>` : ''}
+    `;
+
+    approvalText.innerHTML = isReleased
+      ? '<strong>⚠️ This voucher has been RELEASED.</strong> Deletion requires approval from <strong>CPO or Admin</strong>.'
+      : 'This will require approval from <strong>Payable Unit Head or Admin</strong>.';
+
+    reasonEl.value = '';
+    document.getElementById('deleteRequestModal').classList.add('active');
+  },
+
+  async submitDeleteRequest() {
+    const voucher = this.deleteTargetVoucher;
+    if (!voucher) return Utils.showToast('No voucher selected', 'error');
+
+    const reason = document.getElementById('deleteReason').value.trim();
+    if (!reason) return Utils.showToast('Reason for deletion is required', 'error');
+
+    const confirmed = await Utils.confirm(
+      `Submit deletion request?\n\nVoucher: ${voucher.accountOrMail}\nPayee: ${voucher.payee}\nReason: ${reason}`,
+      'Confirm Deletion Request'
+    );
+    if (!confirmed) return;
+
+    this.showLoading(true);
+    this.closeModal('deleteRequestModal');
+
+    try {
+      const result = await API.requestDelete(voucher.rowIndex, reason, voucher.status || 'Unpaid');
+      if (result.success) {
+        Utils.showToast(result.message || 'Deletion request submitted', 'success');
+        this.deleteTargetVoucher = null;
+        await this.loadVouchers();
+        if (this.pendingDeletionsLoaded) await this.loadPendingDeletions();
+      } else {
+        Utils.showToast(result.error || 'Failed to request deletion', 'error');
+      }
+    } catch (e) {
+      console.error('submitDeleteRequest error:', e);
+      Utils.showToast('Error requesting deletion', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  async cancelDeleteRequest(rowIndex) {
+    const confirmed = await Utils.confirm(
+      'Undo/cancel this deletion request?\n\nThe voucher will be restored to its previous status.',
+      'Cancel Deletion Request'
+    );
+    if (!confirmed) return;
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.cancelDeleteRequest(rowIndex);
+      if (result.success) {
+        Utils.showToast(result.message || 'Request cancelled', 'success');
+        await this.loadVouchers();
+        if (this.pendingDeletionsLoaded) await this.loadPendingDeletions();
+      } else {
+        Utils.showToast(result.error || 'Failed to cancel request', 'error');
+      }
+    } catch (e) {
+      console.error('cancelDeleteRequest error:', e);
+      Utils.showToast('Error cancelling request', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  async approveDelete(rowIndex) {
+    const confirmed = await Utils.confirm('Approve permanent deletion? This cannot be undone.', 'Approve Deletion');
+    if (!confirmed) return;
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.approveDelete(rowIndex);
+      if (result.success) {
+        Utils.showToast(result.message || 'Voucher deleted', 'success');
+        await this.loadVouchers();
+        if (this.pendingDeletionsLoaded) {
+          await this.loadPendingDeletions();
+          this.renderPendingDeletions();
+        }
+      } else {
+        Utils.showToast(result.error || 'Approval failed', 'error');
+      }
+    } catch (e) {
+      console.error('approveDelete error:', e);
+      Utils.showToast('Error approving deletion', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  rejectDelete(rowIndex) {
+    const v = this.pendingDeletions.find(x => x.rowIndex === rowIndex) || this.vouchers.find(x => x.rowIndex === rowIndex);
+    if (!v) return Utils.showToast('Voucher not found', 'error');
+
+    this.rejectTargetVoucher = v;
+
+    const info = document.getElementById('rejectVoucherInfo');
+    const reasonEl = document.getElementById('rejectReason');
+    if (!info || !reasonEl) return Utils.showToast('Reject modal elements missing', 'error');
+
+    info.innerHTML = `
+      <p><strong>Voucher No:</strong> ${v.accountOrMail || '-'}</p>
+      <p><strong>Payee:</strong> ${v.payee || '-'}</p>
+      <p><strong>Amount:</strong> ${Utils.formatCurrency(v.grossAmount || 0)}</p>
+    `;
+    reasonEl.value = '';
+
+    document.getElementById('rejectDeleteModal').classList.add('active');
+  },
+
+  async submitRejectDelete() {
+    const v = this.rejectTargetVoucher;
+    if (!v) return Utils.showToast('No voucher selected', 'error');
+
+    const reason = document.getElementById('rejectReason').value.trim();
+
+    this.showLoading(true);
+    this.closeModal('rejectDeleteModal');
+
+    try {
+      const result = await API.rejectDelete(v.rowIndex, reason);
+      if (result.success) {
+        Utils.showToast(result.message || 'Request rejected', 'success');
+        this.rejectTargetVoucher = null;
+        await this.loadVouchers();
+        if (this.pendingDeletionsLoaded) {
+          await this.loadPendingDeletions();
+          this.renderPendingDeletions();
+        }
+      } else {
+        Utils.showToast(result.error || 'Rejection failed', 'error');
+      }
+    } catch (e) {
+      console.error('submitRejectDelete error:', e);
+      Utils.showToast('Error rejecting deletion', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  // ===== Pending deletions (Approvers) =====
+  async loadPendingDeletions() {
+    const user = Auth.getUser();
+    if (!user) return;
+
+    const approverRoles = [CONFIG.ROLES.PAYABLE_HEAD, CONFIG.ROLES.CPO, CONFIG.ROLES.ADMIN];
+    if (!approverRoles.includes(user.role)) return;
+
+    try {
+      const result = await API.getPendingDeletions();
+      if (result.success) {
+        this.pendingDeletions = result.vouchers || [];
+
+        const card = document.getElementById('pendingDeletionsCard');
+        const countEl = document.getElementById('pendingCount');
+
+        if (card && this.pendingDeletions.length > 0) {
+          card.style.display = 'block';
+          if (countEl) countEl.textContent = this.pendingDeletions.length;
+        } else if (card) {
+          card.style.display = 'none';
+        }
+
+        this.pendingDeletionsLoaded = true;
+      }
+    } catch (e) {
+      console.error('loadPendingDeletions error:', e);
+    }
+  },
+
+  togglePendingDeletions() {
+    const list = document.getElementById('pendingDeletionsList');
+    const toggleText = document.getElementById('pendingToggleText');
+    if (!list || !toggleText) return;
+
+    if (list.classList.contains('hidden')) {
+      list.classList.remove('hidden');
+      toggleText.textContent = 'Hide';
+      this.renderPendingDeletions();
+    } else {
+      list.classList.add('hidden');
+      toggleText.textContent = 'Show';
+    }
+  },
+
+  renderPendingDeletions() {
+    const container = document.getElementById('pendingDeletionsList');
+    if (!container) return;
+
+    if (!this.pendingDeletions.length) {
+      container.innerHTML = '<p class="text-muted text-center">No pending deletion requests</p>';
+      return;
+    }
+
+    let html = `
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Voucher No.</th>
+              <th>Payee</th>
+              <th>Amount</th>
+              <th>Control No.</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    this.pendingDeletions.forEach(v => {
+      const isReleased = v.controlNumber && String(v.controlNumber).trim() !== '';
+      html += `
+        <tr>
+          <td><strong>${v.accountOrMail || '-'}</strong></td>
+          <td title="${v.payee || ''}">${Utils.truncate(v.payee || '', 25)}</td>
+          <td>${Utils.formatCurrency(v.grossAmount || 0)}</td>
+          <td>${v.controlNumber || '-'} ${isReleased ? '<span class="badge badge-pending">Released</span>' : ''}</td>
+          <td>
+            <div class="action-buttons">
+              <button class="btn btn-sm btn-success" onclick="Vouchers.approveDelete(${v.rowIndex})"><i class="fas fa-check"></i> Approve</button>
+              <button class="btn btn-sm btn-warning" onclick="Vouchers.rejectDelete(${v.rowIndex})"><i class="fas fa-times"></i> Reject</button>
+              <button class="btn btn-sm btn-secondary" onclick="Vouchers.viewVoucher(${v.rowIndex})"><i class="fas fa-eye"></i> View</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+  },
+
+  // ===== Enhanced Release Workflow =====
+  openReleaseModal() {
+  const user = Auth.getUser();
+  if (!user) return;
+
+  this.isPayableUnit = [CONFIG.ROLES.PAYABLE_STAFF, CONFIG.ROLES.PAYABLE_HEAD, CONFIG.ROLES.ADMIN].includes(user.role);
+  this.isCPO = (user.role === CONFIG.ROLES.CPO);
+
+  // reset search results
+  this.releaseSearchResults = [];
+
+  // IMPORTANT: prefill from main-table selected vouchers
+  this.selectedForRelease = (this.selectedVouchers || [])
+    .map(rowIndex => this.vouchers.find(v => v.rowIndex === rowIndex))
+    .filter(Boolean)
+    .map(v => ({ ...v, sourceYear: '2026' })); // ensure sourceYear exists
+
+  // reset UI fields
+  document.getElementById('releaseSearchInput').value = '';
+  document.getElementById('releaseStatusFilter').value = 'Unpaid';
+  document.getElementById('releaseSearchResults').innerHTML =
+    '<p class="text-muted text-center">Enter search criteria and click Search</p>';
+
+  document.getElementById('releaseControlNumber').value = '';
+  document.getElementById('releaseTargetUnit').value = '';
+  document.getElementById('customTargetUnit').value = '';
+  document.getElementById('releasePurpose').value = '';
+
+  // show/hide fields based on role
+  const cnGroup = document.getElementById('controlNumberGroup');
+  const purposeGroup = document.getElementById('releasePurposeGroup');
+
+  if (this.isCPO) {
+    cnGroup?.classList.add('hidden');
+    purposeGroup?.classList.remove('hidden');
+  } else {
+    cnGroup?.classList.remove('hidden');
+    purposeGroup?.classList.add('hidden');
+  }
+
+  // show step 1 by default
+  document.getElementById('releaseStep1').classList.remove('hidden');
+  document.getElementById('releaseStep2').classList.add('hidden');
+
+  // update selected display (this makes them appear immediately)
+  this.updateReleaseSelectedDisplay();
+
+  document.getElementById('releaseModal').classList.add('active');
+},
+
+  handleTargetUnitChange() {
+    const target = document.getElementById('releaseTargetUnit').value;
+    const customGroup = document.getElementById('customTargetUnitGroup');
+    if (!customGroup) return;
+
+    if (target === 'Others') {
+      customGroup.classList.remove('hidden');
+    } else {
+      customGroup.classList.add('hidden');
+      document.getElementById('customTargetUnit').value = '';
+    }
+  },
+
+  async searchForRelease() {
+    const searchTerm = document.getElementById('releaseSearchInput').value.trim();
+    const statusFilter = document.getElementById('releaseStatusFilter').value;
+    const categoryFilter = document.getElementById('releaseCategoryFilter').value;
+
+    if (!searchTerm && statusFilter === 'All' && categoryFilter === 'All') {
+      Utils.showToast('Please enter search criteria', 'warning');
+      return;
+    }
+
+    const container = document.getElementById('releaseSearchResults');
+    container.innerHTML = '<p class="text-muted text-center">Searching...</p>';
+
+    this.showLoading(true);
+
+    try {
+      // Required order
+      const years = ['2026', '2025', '2024', '2023', '<2023'];
+      let all = [];
+
+      for (const year of years) {
+        const filters = { searchTerm, status: statusFilter, category: categoryFilter };
+        const result = await API.getVouchers(year, filters, 1, 100);
+        if (result.success && result.vouchers && result.vouchers.length) {
+          result.vouchers.forEach(v => {
+            v.sourceYear = year;
+            all.push(v);
+          });
+        }
+      }
+
+      // Only 2026 is selectable
+      this.releaseSearchResults = all;
+      this.renderReleaseSearchResults();
+    } catch (e) {
+      console.error('searchForRelease error:', e);
+      container.innerHTML = '<p class="text-danger text-center">Search failed.</p>';
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  renderReleaseSearchResults() {
+    const container = document.getElementById('releaseSearchResults');
+    if (!container) return;
+
+    const results = this.releaseSearchResults || [];
+    if (!results.length) {
+      container.innerHTML = '<p class="text-muted text-center">No vouchers found</p>';
+      return;
+    }
+
+    let html = `
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:30px;"></th>
+              <th>Voucher No.</th>
+              <th>Payee</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Year</th>
+              <th>Control No.</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    results.forEach((v, i) => {
+      const isSelected = this.selectedForRelease.some(x => x.rowIndex === v.rowIndex && x.sourceYear === v.sourceYear);
+      const hasCN = v.controlNumber && String(v.controlNumber).trim() !== '';
+
+      // rule: only 2026 selectable
+      let disabled = (v.sourceYear !== '2026');
+
+      // payable unit cannot release already released vouchers; CPO can proceed
+      if (!this.isCPO && hasCN) disabled = true;
+
+      html += `
+        <tr style="${disabled ? 'opacity:0.6;cursor:not-allowed;' : 'cursor:pointer;'}"
+            onclick="${disabled ? '' : `Vouchers.toggleReleaseSelection(${i})`}">
+          <td>
+            <input type="checkbox"
+              ${isSelected ? 'checked' : ''}
+              ${disabled ? 'disabled' : ''}
+              onclick="event.stopPropagation(); ${disabled ? '' : `Vouchers.toggleReleaseSelection(${i})`}">
+          </td>
+          <td><strong>${v.accountOrMail || '-'}</strong></td>
+          <td title="${v.payee || ''}">${Utils.truncate(v.payee || '', 20)}</td>
+          <td>${Utils.formatCurrency(v.grossAmount || 0)}</td>
+          <td>${Utils.getStatusBadge(v.status || '')}</td>
+          <td>${v.sourceYear}</td>
+          <td>${v.controlNumber || '-'}</td>
+        </tr>
+      `;
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+  },
+
+  toggleReleaseSelection(index) {
+    const v = this.releaseSearchResults[index];
+    if (!v) return;
+
+    if (v.sourceYear !== '2026') return;
+    const hasCN = v.controlNumber && String(v.controlNumber).trim() !== '';
+    if (!this.isCPO && hasCN) {
+      Utils.showToast('Already released voucher cannot be re-released without approval.', 'warning');
+      return;
+    }
+
+    const pos = this.selectedForRelease.findIndex(x => x.rowIndex === v.rowIndex && x.sourceYear === v.sourceYear);
+    if (pos >= 0) this.selectedForRelease.splice(pos, 1);
+    else this.selectedForRelease.push(v);
+
+    this.renderReleaseSearchResults();
+    this.updateReleaseSelectedDisplay();
+  },
+
+  updateReleaseSelectedDisplay() {
+    const wrap = document.getElementById('releaseSelectedList');
+    const countEl = document.getElementById('releaseSelectedCount');
+    const tagsEl = document.getElementById('releaseSelectedTags');
+    const totalEl = document.getElementById('releaseSelectedTotal');
+
+    if (!wrap || !countEl || !tagsEl || !totalEl) return;
+
+    if (!this.selectedForRelease.length) {
+      wrap.classList.add('hidden');
+      countEl.textContent = '0';
+      tagsEl.innerHTML = '';
+      totalEl.textContent = '₦0.00';
+      return;
+    }
+
+    wrap.classList.remove('hidden');
+    countEl.textContent = this.selectedForRelease.length;
+
+    let total = 0;
+    tagsEl.innerHTML = this.selectedForRelease.map((v, idx) => {
+      total += Number(v.grossAmount || 0);
+      return `
+        <span class="release-tag">
+          ${v.accountOrMail || v.payee || 'Voucher'}
+          <span class="remove-tag" onclick="event.stopPropagation(); Vouchers.removeFromReleaseSelection(${idx})">
+            <i class="fas fa-times"></i>
+          </span>
+        </span>
+      `;
+    }).join('');
+
+    totalEl.textContent = Utils.formatCurrency(total);
+  },
+
+  removeFromReleaseSelection(idx) {
+    this.selectedForRelease.splice(idx, 1);
+    this.renderReleaseSearchResults();
+    this.updateReleaseSelectedDisplay();
+  },
+
+  proceedToReleaseStep2() {
+    if (!this.selectedForRelease.length) {
+      Utils.showToast('Please select at least one voucher to release', 'warning');
+      return;
+    }
+
+    // Payable unit cannot proceed with already released vouchers
+    if (!this.isCPO) {
+      const already = this.selectedForRelease.filter(v => v.controlNumber && String(v.controlNumber).trim() !== '');
+      if (already.length) return Utils.showToast('Some selected vouchers are already released. Remove them from selections.', 'error');
+    }
+
+    // summary
+    let total = 0;
+    const list = this.selectedForRelease.map(v => {
+      total += Number(v.grossAmount || 0);
+      return `<span class="release-tag">${v.accountOrMail || '-'}</span>`;
+    }).join('');
+
+    const summaryBox = document.getElementById('releaseSummaryBox');
+    if (summaryBox) {
+      summaryBox.innerHTML = `
+        <h5><i class="fas fa-clipboard-list"></i> Release Summary</h5>
+        <p><strong>Number of Vouchers:</strong> ${this.selectedForRelease.length}</p>
+        <p><strong>Total Amount:</strong> ${Utils.formatCurrency(total)}</p>
+        <p><strong>Voucher Numbers:</strong></p>
+        <div class="release-tags">${list}</div>
+      `;
+    }
+
+    document.getElementById('releaseStep1').classList.add('hidden');
+    document.getElementById('releaseStep2').classList.remove('hidden');
+  },
+
+  backToReleaseStep1() {
+    document.getElementById('releaseStep1').classList.remove('hidden');
+    document.getElementById('releaseStep2').classList.add('hidden');
+  },
+
+  async generateControlNumber() {
+    const target = document.getElementById('releaseTargetUnit').value;
+    if (!target || target === 'Others') return Utils.showToast('Please select a target unit first', 'warning');
+
+    this.showLoading(true);
+    try {
+      const result = await API.get('getNextControlNumber', { targetUnit: target });
+      if (result.success && result.controlNumber) {
+        document.getElementById('releaseControlNumber').value = result.controlNumber;
+        Utils.showToast('Control number generated', 'success');
+      } else {
+        Utils.showToast('Failed to generate control number', 'warning');
+      }
+    } catch (e) {
+      console.error('generateControlNumber error:', e);
+      Utils.showToast('Error generating control number', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  async submitRelease() {
+    let targetUnit = document.getElementById('releaseTargetUnit').value;
+    if (!targetUnit) return Utils.showToast('Please select a target unit', 'error');
+
+    if (targetUnit === 'Others') {
+      targetUnit = document.getElementById('customTargetUnit').value.trim();
+      if (!targetUnit) return Utils.showToast('Please specify the target unit', 'error');
+    }
+
+    if (!this.selectedForRelease.length) return Utils.showToast('No vouchers selected', 'error');
+
+    let controlNumber = '';
+    let purpose = '';
+
+    if (this.isCPO) {
+        purpose = document.getElementById('releasePurpose').value.trim();
+        if (!purpose) return Utils.showToast('Purpose is required for CPO release', 'error');
+
+        if (this.isCPO) {
+    const cnSet = new Set(this.selectedForRelease.map(v => (v.controlNumber || '').trim()).filter(Boolean));
+    if (cnSet.size !== 1) {
+        Utils.showToast('CPO release requires all selected vouchers to have the SAME Control Number.', 'error');
+        return;
+    }
+    controlNumber = [...cnSet][0];
+    }
+
+      // CPO uses existing CN from vouchers
+      if (this.selectedForRelease[0].controlNumber) controlNumber = this.selectedForRelease[0].controlNumber;
+    } else {
+      controlNumber = document.getElementById('releaseControlNumber').value.trim();
+      if (!controlNumber) return Utils.showToast('Please enter or generate a control number', 'error');
+    }
+
+    const total = this.selectedForRelease.reduce((sum, v) => sum + Number(v.grossAmount || 0), 0);
+
+    const confirmed = await Utils.confirm(
+      `Release ${this.selectedForRelease.length} voucher(s) to ${targetUnit}?\n\nTotal: ${Utils.formatCurrency(total)}\n${this.isCPO ? 'Purpose: ' + purpose : 'Control No: ' + controlNumber}`,
+      'Confirm Release'
+    );
+    if (!confirmed) return;
+
+    this.showLoading(true);
+
+    try {
+      const rowIndexes = this.selectedForRelease.map(v => v.rowIndex);
+
+      // Call backend release router (recommended)
+      const result = await API.post('releaseVouchers', {
+        rowIndexes,
+        controlNumber,
+        targetUnit,
+        purpose,
+        isCPORelease: this.isCPO
+      });
+
+      if (result.success) {
+        Utils.showToast(result.message || 'Released successfully', 'success');
+        this.closeModal('releaseModal');
+        this.selectedForRelease = [];
+        this.selectedVouchers = [];
+        await this.loadVouchers();
+      } else {
+        Utils.showToast(result.error || 'Release failed', 'error');
+      }
+    } catch (e) {
+      console.error('submitRelease error:', e);
+      Utils.showToast('Error releasing vouchers', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  // ===== Utilities =====
+  setupEventListeners() {
+    const debouncedFilter = Utils.debounce(() => this.applyFilters(), 400);
+
+    document.getElementById('statusFilter')?.addEventListener('change', () => this.applyFilters());
+    document.getElementById('categoryFilter')?.addEventListener('change', () => this.applyFilters());
+
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', debouncedFilter);
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.applyFilters();
+      });
+    }
+
+    document.getElementById('logoutBtn')?.addEventListener('click', () => Auth.logout());
+    document.getElementById('menuToggle')?.addEventListener('click', () => document.getElementById('sidebar')?.classList.toggle('active'));
+
+    // close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(m => {
+      m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('active'); });
+    });
+
+    // voucher form submit
+    document.getElementById('voucherForm')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.saveVoucher();
+    });
+
+    // NET live recalculation
+    const recalcNet = () => {
+      const gross = parseFloat(document.getElementById('formGrossAmount').value) || 0;
+      const vat = parseFloat(document.getElementById('formVat').value) || 0;
+      const wht = parseFloat(document.getElementById('formWht').value) || 0;
+      const stamp = parseFloat(document.getElementById('formStampDuty').value) || 0;
+      document.getElementById('formNet').value = (gross - (vat + wht + stamp)).toFixed(2);
+    };
+    ['formGrossAmount', 'formVat', 'formWht', 'formStampDuty'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', recalcNet);
+    });
+  },
+
+  closeModal(id) {
+    document.getElementById(id)?.classList.remove('active');
+  },
+
+  showLoading(show) {
+    const loader = document.getElementById('loadingOverlay');
+    if (loader) loader.classList.toggle('hidden', !show);
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => Vouchers.init());

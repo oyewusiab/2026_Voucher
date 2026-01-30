@@ -1,0 +1,700 @@
+/**
+ * PAYABLE VOUCHER 2026 - Reports Module
+ * Comprehensive reporting and analytics
+ */
+
+const Reports = {
+    // State
+    currentYear: '2026',
+    summaryData: null,
+    allYearsData: null,
+    debtProfile: null,
+    categoryChart: null,
+    monthlyChart: null,
+    
+    /**
+     * Initialize reports page
+     */
+    async init() {
+        const isAuth = await Auth.requireAuth();
+        if (!isAuth) return;
+        
+        this.setupSidebar();
+        this.setupEventListeners();
+        await this.loadAllReports();
+    },
+    
+    /**
+     * Setup sidebar navigation
+     */
+    setupSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+            sidebar.innerHTML = Components.getSidebar('reports');
+        }
+    },
+    
+    /**
+     * Setup event listeners
+     */
+    setupEventListeners() {
+        // Year selector
+        const yearSelector = document.getElementById('yearSelector');
+        if (yearSelector) {
+            yearSelector.addEventListener('change', (e) => {
+                this.currentYear = e.target.value;
+                document.getElementById('currentYearLabel').textContent = this.currentYear;
+                this.loadYearSummary();
+            });
+        }
+        
+        // Logout
+        document.getElementById('logoutBtn')?.addEventListener('click', () => Auth.logout());
+        
+        // Mobile menu
+        document.getElementById('menuToggle')?.addEventListener('click', () => {
+            document.getElementById('sidebar')?.classList.toggle('active');
+        });
+        
+        // Print button
+        document.getElementById('printBtn')?.addEventListener('click', () => window.print());
+        
+        // Export button
+        document.getElementById('exportBtn')?.addEventListener('click', () => this.exportToCSV());
+    },
+    
+    /**
+     * Load all reports data (initial load)
+     */
+    async loadAllReports() {
+        this.showLoading(true);
+        
+        try {
+            await this.loadYearSummary();
+            await this.loadAllYearsSummary();
+            await this.loadDebtProfile();
+        } catch (error) {
+            console.error('Error loading reports:', error);
+            Utils.showToast('Error loading reports', 'error');
+        }
+        
+        this.showLoading(false);
+    },
+    
+    /**
+     * Load summary for selected year
+     */
+    async loadYearSummary() {
+        const result = await API.getSummary(this.currentYear);
+        
+        if (result.success) {
+            this.summaryData = result;
+            this.renderYearSummary(result);
+            this.renderCategoryTable(result.categoryBreakdown);
+            this.renderMonthlyTable(result.monthlyBreakdown);
+            this.drawCategoryChart(result.categoryBreakdown);
+            this.drawMonthlyChart(result.monthlyBreakdown);
+        } else {
+            Utils.showToast(result.error || 'Failed to load summary', 'error');
+        }
+    },
+    
+    /**
+     * Draw category bar chart
+     */
+    drawCategoryChart(categories) {
+        const ctx = document.getElementById('categoryChart');
+        if (!ctx || !categories || categories.length === 0) return;
+        
+        const labels = categories.map(c => c.category);
+        const paidData = categories.map(c => c.amountPaid);
+        const balanceData = categories.map(c => c.balance);
+        
+        if (this.categoryChart) {
+            this.categoryChart.destroy();
+        }
+        
+        this.categoryChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Amount Paid',
+                        data: paidData,
+                        backgroundColor: 'rgba(40, 167, 69, 0.7)'
+                    },
+                    {
+                        label: 'Balance (Unpaid)',
+                        data: balanceData,
+                        backgroundColor: 'rgba(220, 53, 69, 0.7)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: false }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '₦' + Number(value).toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    /**
+     * Draw monthly line chart
+     */
+    drawMonthlyChart(months) {
+        const ctx = document.getElementById('monthlyChart');
+        if (!ctx || !months || months.length === 0) return;
+        
+        const labels = months.map(m => m.month);
+        const paidData = months.map(m => m.paidAmount);
+        const unpaidData = months.map(m => m.unpaidAmount);
+        
+        if (this.monthlyChart) {
+            this.monthlyChart.destroy();
+        }
+        
+        this.monthlyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Paid Amount',
+                        data: paidData,
+                        borderColor: 'rgba(40, 167, 69, 1)',
+                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Unpaid Amount',
+                        data: unpaidData,
+                        borderColor: 'rgba(255, 193, 7, 1)',
+                        backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: false }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '₦' + Number(value).toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    /**
+     * Load all years summary for debt tracking
+     */
+    async loadAllYearsSummary() {
+        const result = await API.getAllYearsSummary();
+        
+        if (result.success) {
+            this.allYearsData = result;
+            this.renderAllYearsSummary(result);
+        } else {
+            Utils.showToast(result.error || 'Failed to load all-years summary', 'error');
+        }
+    },
+    
+    /**
+     * Load debt profile (2026)
+     */
+    async loadDebtProfile() {
+        const result = await API.getDebtProfile();
+        
+        if (result.success) {
+            this.debtProfile = result;
+            this.renderDebtProfile(result);
+        } else {
+            Utils.showToast(result.error || 'Failed to load debt profile', 'error');
+        }
+    },
+    
+    /**
+     * Render year summary cards
+     * Uses definitions from backend getSummary:
+     * - Total Vouchers Raised: count (ACCOUNT OR MAIL not empty)
+     * - Paid/Unpaid/Cancelled: amounts from GROSS AMOUNT
+     * - Total Contract Sum: sum(CONTRACT SUM)
+     * - Total Debt: Contract Sum - (Paid + Cancelled)
+     * - Average Payment Rate: Paid count / Total Raised * 100
+     * - Revalidated: count(OLD VOUCHER NUMBER not empty)
+     */
+    renderYearSummary(data) {
+        const container = document.getElementById('yearSummaryCards');
+        if (!container || !data.summary) return;
+        
+        const stats = data.summary;
+        
+        container.innerHTML = `
+            <!-- Total Vouchers Raised (COUNT) -->
+            <div class="stat-card">
+                <div class="stat-label">Total Vouchers Raised</div>
+                <div class="stat-value">${Utils.formatNumber(stats.totalVouchersRaised)}</div>
+                <div class="stat-subvalue">Count of vouchers with Voucher Number</div>
+            </div>
+            
+            <!-- Paid Vouchers (AMOUNT) -->
+            <div class="stat-card paid">
+                <div class="stat-label">Paid Vouchers (Amount)</div>
+                <div class="stat-value">${Utils.formatCurrency(stats.totalPaidAmount)}</div>
+                <div class="stat-subvalue">
+                    ${Utils.formatNumber(stats.paidVouchers)} voucher(s) paid
+                </div>
+            </div>
+            
+            <!-- Unpaid Vouchers (AMOUNT) -->
+            <div class="stat-card unpaid">
+                <div class="stat-label">Unpaid Vouchers (Amount)</div>
+                <div class="stat-value">${Utils.formatCurrency(stats.totalUnpaidAmount)}</div>
+                <div class="stat-subvalue">
+                    ${Utils.formatNumber(stats.unpaidVouchers)} voucher(s) unpaid
+                </div>
+            </div>
+            
+            <!-- Cancelled Vouchers (AMOUNT) -->
+            <div class="stat-card cancelled">
+                <div class="stat-label">Cancelled Vouchers (Amount)</div>
+                <div class="stat-value">${Utils.formatCurrency(stats.totalCancelledAmount)}</div>
+                <div class="stat-subvalue">
+                    ${Utils.formatNumber(stats.cancelledVouchers)} voucher(s) cancelled
+                </div>
+            </div>
+            
+            <!-- Total Contract Sum (AMOUNT) -->
+            <div class="stat-card info">
+                <div class="stat-label">Total Contract Sum</div>
+                <div class="stat-value">${Utils.formatCurrency(stats.totalProcessedContractSum)}</div>
+            <div class="stat-subvalue">From Processed Contracts</div>
+                </div>
+            
+            <!-- Total Debt (AMOUNT) -->
+            <div class="stat-card">
+                <div class="stat-label">Total Debt</div>
+                <div class="stat-value text-danger">${Utils.formatCurrency(stats.totalDebt)}</div>
+                <div class="stat-subvalue">
+                    = Contract Sum - (Paid + Cancelled)
+                </div>
+            </div>
+            
+            <!-- Average Payment Rate -->
+            <div class="stat-card info">
+                <div class="stat-label">Average Payment Rate</div>
+                <div class="stat-value">${stats.averagePaymentPercent}%</div>
+                <div class="stat-subvalue">
+                    Based on voucher count: Paid / Total Raised
+                    <div class="progress-bar-mini" style="margin-top:5px;">
+                        <div class="progress-fill" style="width: ${Math.min(stats.averagePaymentPercent, 100)}%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Revalidated Vouchers (COUNT) -->
+            <div class="stat-card">
+                <div class="stat-label">Revalidated Vouchers</div>
+                <div class="stat-value">${Utils.formatNumber(stats.revalidatedVouchers)}</div>
+                <div class="stat-subvalue">With Old Voucher Number</div>
+            </div>
+        `;
+    },
+    
+    /**
+     * Render category breakdown table
+     */
+    renderCategoryTable(categories) {
+        const container = document.getElementById('categoryTable');
+        if (!container) return;
+        
+        if (!categories || categories.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">No category data available</p>';
+            return;
+        }
+        
+        // Calculate totals
+        let totalVouchers = 0;
+        let totalPaid = 0;
+        let totalBalance = 0;
+        
+        categories.forEach(cat => {
+            totalVouchers += cat.vouchersRaised;
+            totalPaid += cat.amountPaid;
+            totalBalance += cat.balance;
+        });
+        
+        let html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th class="text-center">Vouchers Raised</th>
+                            <th class="text-right">Amount Paid</th>
+                            <th class="text-right">Balance</th>
+                            <th class="text-center">% Paid</th>
+                            <th class="text-center">% of Total Pmt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        categories.forEach(cat => {
+            const percentBar = `
+                <div class="progress-bar-mini">
+                    <div class="progress-fill ${cat.percentagePaid >= 70 ? 'success' : cat.percentagePaid >= 40 ? 'warning' : 'danger'}" 
+                         style="width: ${Math.min(cat.percentagePaid, 100)}%"></div>
+                </div>
+                <small>${cat.percentagePaid}%</small>
+            `;
+            
+            html += `
+                <tr>
+                    <td><strong>${cat.category}</strong></td>
+                    <td class="text-center">${Utils.formatNumber(cat.vouchersRaised)}</td>
+                    <td class="text-right text-success">${Utils.formatCurrency(cat.amountPaid)}</td>
+                    <td class="text-right text-danger">${Utils.formatCurrency(cat.balance)}</td>
+                    <td class="text-center">${percentBar}</td>
+                    <td class="text-center">${cat.percentOfTotalPayment}%</td>
+                </tr>
+            `;
+        });
+        
+        // Totals row
+        const totalPercentPaid = totalPaid + totalBalance > 0 
+            ? ((totalPaid / (totalPaid + totalBalance)) * 100).toFixed(2) 
+            : 0;
+        
+        html += `
+            <tr class="totals-row">
+                <td><strong>TOTAL</strong></td>
+                <td class="text-center"><strong>${Utils.formatNumber(totalVouchers)}</strong></td>
+                <td class="text-right text-success"><strong>${Utils.formatCurrency(totalPaid)}</strong></td>
+                <td class="text-right text-danger"><strong>${Utils.formatCurrency(totalBalance)}</strong></td>
+                <td class="text-center"><strong>${totalPercentPaid}%</strong></td>
+                <td class="text-center"><strong>100%</strong></td>
+            </tr>
+        `;
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    },
+    
+    /**
+     * Render monthly breakdown table
+     */
+    renderMonthlyTable(months) {
+        const container = document.getElementById('monthlyTable');
+        if (!container) return;
+        
+        if (!months || months.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">No monthly data available</p>';
+            return;
+        }
+        
+        let totalCount = 0;
+        let totalPaid = 0;
+        let totalUnpaid = 0;
+        
+        let html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th class="text-center">Voucher Count</th>
+                            <th class="text-right">Amount Paid</th>
+                            <th class="text-right">Amount Unpaid</th>
+                            <th class="text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        months.forEach(month => {
+            totalCount += month.count;
+            totalPaid += month.paidAmount;
+            totalUnpaid += month.unpaidAmount;
+            
+            const monthTotal = month.paidAmount + month.unpaidAmount;
+            
+            html += `
+                <tr>
+                    <td><strong>${month.month}</strong></td>
+                    <td class="text-center">${Utils.formatNumber(month.count)}</td>
+                    <td class="text-right text-success">${Utils.formatCurrency(month.paidAmount)}</td>
+                    <td class="text-right text-warning">${Utils.formatCurrency(month.unpaidAmount)}</td>
+                    <td class="text-right">${Utils.formatCurrency(monthTotal)}</td>
+                </tr>
+            `;
+        });
+        
+        // Totals row
+        html += `
+            <tr class="totals-row">
+                <td><strong>TOTAL</strong></td>
+                <td class="text-center"><strong>${Utils.formatNumber(totalCount)}</strong></td>
+                <td class="text-right text-success"><strong>${Utils.formatCurrency(totalPaid)}</strong></td>
+                <td class="text-right text-warning"><strong>${Utils.formatCurrency(totalUnpaid)}</strong></td>
+                <td class="text-right"><strong>${Utils.formatCurrency(totalPaid + totalUnpaid)}</strong></td>
+            </tr>
+        `;
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    },
+    
+    /**
+     * Render all years summary (debt tracking)
+     */
+    renderAllYearsSummary(data) {
+        const container = document.getElementById('allYearsTable');
+        if (!container) return;
+        
+        if (!data.yearsSummary || data.yearsSummary.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">No data available</p>';
+            return;
+        }
+        
+        let html = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Year</th>
+                            <th class="text-right">Balance B/F</th>
+                            <th class="text-center">Total Vouchers</th>
+                            <th class="text-right">Total Amount</th>
+                            <th class="text-right">Paid</th>
+                            <th class="text-center">Revalidated</th>
+                            <th class="text-center">Cancelled</th>
+                            <th class="text-right">Current Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        data.yearsSummary.forEach(year => {
+            if (year.error) {
+                html += `
+                    <tr>
+                        <td><strong>${year.label}</strong></td>
+                        <td colspan="7" class="text-muted text-center">${year.error}</td>
+                    </tr>
+                `;
+            } else {
+                html += `
+                    <tr>
+                        <td><strong>${year.label}</strong></td>
+                        <td class="text-right">${Utils.formatCurrency(year.balanceBroughtForward)}</td>
+                        <td class="text-center">${Utils.formatNumber(year.totalVouchers || 0)}</td>
+                        <td class="text-right">${Utils.formatCurrency(year.totalAmount || 0)}</td>
+                        <td class="text-right text-success">${Utils.formatCurrency(year.paidAmount || 0)}</td>
+                        <td class="text-center">${Utils.formatNumber(year.revalidatedVouchers || 0)}</td>
+                        <td class="text-center">${Utils.formatNumber(year.cancelledVouchers || 0)}</td>
+                        <td class="text-right text-danger"><strong>${Utils.formatCurrency(year.currentBalance || 0)}</strong></td>
+                    </tr>
+                `;
+            }
+        });
+        
+        // Grand totals
+        if (data.grandTotals) {
+            html += `
+                <tr class="totals-row">
+                    <td><strong>GRAND TOTAL</strong></td>
+                    <td class="text-right">-</td>
+                    <td class="text-center"><strong>${Utils.formatNumber(data.grandTotals.totalVouchers)}</strong></td>
+                    <td class="text-right"><strong>${Utils.formatCurrency(data.grandTotals.totalAmount)}</strong></td>
+                    <td class="text-right text-success"><strong>${Utils.formatCurrency(data.grandTotals.totalPaid)}</strong></td>
+                    <td class="text-center"><strong>${Utils.formatNumber(data.grandTotals.totalRevalidated)}</strong></td>
+                    <td class="text-center"><strong>-</strong></td>
+                    <td class="text-right text-danger"><strong>${Utils.formatCurrency(data.grandTotals.currentOutstandingBalance)}</strong></td>
+                </tr>
+            `;
+        }
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        
+        // Update grand total card
+        const grandTotalCard = document.getElementById('grandTotalDebt');
+        if (grandTotalCard && data.grandTotals) {
+            grandTotalCard.innerHTML = `
+                <div class="stat-label">Total Outstanding Debt (All Years)</div>
+                <div class="stat-value text-danger">${Utils.formatCurrency(data.grandTotals.currentOutstandingBalance)}</div>
+                <div class="stat-subvalue">From ${data.yearsSummary.length} years</div>
+            `;
+        }
+    },
+    
+    /**
+     * Render debt profile (2026)
+     */
+    renderDebtProfile(data) {
+        const categoryContainer = document.getElementById('debtByCategory');
+        const debtorsContainer = document.getElementById('topDebtors');
+        
+        if (categoryContainer && data.debtByCategory) {
+            if (data.debtByCategory.length === 0) {
+                categoryContainer.innerHTML = '<p class="text-muted text-center">No unpaid vouchers</p>';
+            } else {
+                let html = '<div class="debt-list">';
+                data.debtByCategory.forEach(cat => {
+                    const percent = data.totalDebt > 0 ? ((cat.amount / data.totalDebt) * 100).toFixed(1) : 0;
+                    html += `
+                        <div class="debt-item">
+                            <div class="debt-info">
+                                <strong>${cat.category}</strong>
+                                <span class="text-muted">(${cat.count} vouchers)</span>
+                            </div>
+                            <div class="debt-amount">
+                                ${Utils.formatCurrency(cat.amount)}
+                                <small class="text-muted">${percent}%</small>
+                            </div>
+                            <div class="debt-bar">
+                                <div class="debt-bar-fill" style="width: ${percent}%"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                categoryContainer.innerHTML = html;
+            }
+        }
+        
+        if (debtorsContainer && data.topDebtors) {
+            if (data.topDebtors.length === 0) {
+                debtorsContainer.innerHTML = '<p class="text-muted text-center">No unpaid vouchers</p>';
+            } else {
+                let html = `
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Payee</th>
+                                    <th class="text-center">Vouchers</th>
+                                    <th class="text-right">Amount Owed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                data.topDebtors.forEach((debtor, index) => {
+                    html += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td title="${debtor.payee}">${Utils.truncate(debtor.payee, 30)}</td>
+                            <td class="text-center">${debtor.count}</td>
+                            <td class="text-right text-danger"><strong>${Utils.formatCurrency(debtor.amount)}</strong></td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table></div>';
+                debtorsContainer.innerHTML = html;
+            }
+        }
+        
+        // Update total debt card for 2026
+        const totalDebtCard = document.getElementById('totalDebt2026');
+        if (totalDebtCard && data.totalDebt !== undefined) {
+            totalDebtCard.innerHTML = `
+                <div class="stat-label">Total Unpaid (2026)</div>
+                <div class="stat-value text-danger">${Utils.formatCurrency(data.totalDebt)}</div>
+            `;
+        }
+    },
+    
+    /**
+     * Export data to CSV
+     */
+    exportToCSV() {
+        if (!this.summaryData || !this.summaryData.categoryBreakdown) {
+            Utils.showToast('No data to export', 'warning');
+            return;
+        }
+        
+        const s = this.summaryData.summary;
+        
+        let csv = 'PAYABLE VOUCHER 2026 - REPORT\n';
+        csv += `Generated: ${new Date().toLocaleString()}\n\n`;
+        
+        // SUMMARY SECTION
+        csv += 'SUMMARY\n';
+        csv += `Total Vouchers Raised (Count),${s.totalVouchersRaised}\n`;
+        csv += `Paid Vouchers (Amount),${s.totalPaidAmount}\n`;
+        csv += `Paid Vouchers (Count),${s.paidVouchers}\n`;
+        csv += `Unpaid Vouchers (Amount),${s.totalUnpaidAmount}\n`;
+        csv += `Unpaid Vouchers (Count),${s.unpaidVouchers}\n`;
+        csv += `Cancelled Vouchers (Amount),${s.totalCancelledAmount}\n`;
+        csv += `Cancelled Vouchers (Count),${s.cancelledVouchers}\n`;
+        csv += `Total Contract Sum,${s.totalProcessedContractSum}\n`;
+        csv += `Total Debt,${s.totalDebt}\n`;
+        csv += `Average Payment Rate (%),${s.averagePaymentPercent}\n`;
+        csv += `Revalidated Vouchers (Count),${s.revalidatedVouchers}\n\n`;
+        
+        // CATEGORY BREAKDOWN
+        csv += 'CATEGORY BREAKDOWN\n';
+        csv += 'Category,Vouchers Raised,Amount Paid,Balance,% Paid\n';
+        this.summaryData.categoryBreakdown.forEach(cat => {
+            csv += `${cat.category},${cat.vouchersRaised},${cat.amountPaid},${cat.balance},${cat.percentagePaid}%\n`;
+        });
+        csv += '\n';
+        
+        // MONTHLY BREAKDOWN
+        csv += 'MONTHLY BREAKDOWN\n';
+        csv += 'Month,Count,Paid,Unpaid\n';
+        this.summaryData.monthlyBreakdown.forEach(month => {
+            csv += `${month.month},${month.count},${month.paidAmount},${month.unpaidAmount}\n`;
+        });
+        
+        // Download CSV
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `PayableVoucher_Report_${this.currentYear}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        
+        Utils.showToast('Report exported successfully', 'success');
+    },
+    
+    /**
+     * Show/hide loading overlay
+     */
+    showLoading(show) {
+        const loader = document.getElementById('loadingOverlay');
+        if (loader) {
+            if (show) {
+                loader.classList.remove('hidden');
+            } else {
+                loader.classList.add('hidden');
+            }
+        }
+    }
+};
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => Reports.init());

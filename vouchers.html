@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vouchers - PAYABLE VOUCHER 2026</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Additional styles for vouchers page */
+        .filters-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--white);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        
+        .filters-bar .form-control {
+            min-width: 150px;
+        }
+        
+        .filters-bar .search-box {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .action-buttons .btn {
+            padding: 5px 10px;
+        }
+        
+        .voucher-details {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .detail-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .detail-group {
+            margin-bottom: 10px;
+        }
+        
+        .detail-group.full-width {
+            grid-column: span 2;
+        }
+        
+        .detail-group label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            display: block;
+        }
+        
+        .detail-group div {
+            font-size: 14px;
+            color: var(--text-dark);
+        }
+        
+        .total-amount {
+            font-size: 24px !important;
+            font-weight: 700;
+            color: var(--primary-color) !important;
+        }
+        
+        .lookup-voucher-details {
+            background: var(--secondary-color);
+            padding: 20px;
+            border-radius: var(--radius);
+            margin-top: 15px;
+        }
+        
+        .lookup-voucher-details h4 {
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+        
+        .input-with-button {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-with-button input {
+            flex: 1;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .detail-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .detail-group.full-width {
+                grid-column: span 1;
+            }
+            
+            .filters-bar {
+                flex-direction: column;
+            }
+            
+            .filters-bar .form-control,
+            .filters-bar .search-box {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p class="loading-text">Loading...</p>
+    </div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Populated by JavaScript -->
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Mobile Menu Toggle -->
+            <button class="menu-toggle" id="menuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div>
+                    <h1 class="page-title">Vouchers</h1>
+                    <p class="page-subtitle">Manage Payment Vouchers for 2026</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" id="lookupBtn" onclick="Vouchers.openLookupModal()">
+                        <i class="fas fa-search"></i> Look-up
+                    </button>
+                    <button class="btn btn-primary" id="newVoucherBtn" onclick="Vouchers.openVoucherForm()">
+                        <i class="fas fa-plus"></i> New Voucher
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters Bar -->
+            <div class="filters-bar">
+                <div>
+                    <select class="form-control" id="statusFilter">
+                        <option value="All">All Status</option>
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Cancelled">Cancelled</option>
+                        <option value="Pending Deletion">Pending Deletion</option>
+                    </select>
+                </div>
+                <div>
+                    <select class="form-control category-select" id="categoryFilter">
+                        <option value="All">All Categories</option>
+                    </select>
+                </div>
+                <div class="search-box">
+                    <input type="text" class="form-control" id="searchInput" 
+                           placeholder="Search by payee, control no, particular...">
+                </div>
+                <div>
+                    <button class="btn btn-secondary" onclick="Vouchers.clearFilters()">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+                <div>
+                    <button class="btn btn-secondary" onclick="Vouchers.loadVouchers()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Actions for CPO -->
+            <div class="card mb-2" id="cpoActions" style="display: none;">
+                <div class="card-body" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-success" onclick="Vouchers.openBatchStatusModal()">
+                        <i class="fas fa-check-double"></i> Batch Update Status
+                    </button>
+                    <button class="btn btn-secondary" onclick="Vouchers.openReleaseModal()">
+                        <i class="fas fa-paper-plane"></i> Release to Unit
+                    </button>
+                </div>
+            </div>
+
+            <!-- Voucher Count -->
+            <div style="margin-bottom: 15px; color: var(--text-muted);">
+                <span id="voucherCount">Loading...</span>
+            </div>
+
+            <!-- Vouchers List -->
+            <div class="card">
+                <div class="card-body" id="vouchersList">
+                    <p class="text-muted text-center">Loading vouchers...</p>
+                </div>
+            </div>
+
+            <!-- Pagination -->
+            <div id="paginationContainer"></div>
+
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- View Voucher Modal -->
+    <div class="modal-overlay" id="viewVoucherModal">
+        <div class="modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Voucher Details</h3>
+                <button class="modal-close" onclick="Vouchers.closeModal('viewVoucherModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="viewVoucherContent">
+                <!-- Content populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Vouchers.closeModal('viewVoucherModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voucher Form Modal -->
+    <div class="modal-overlay" id="voucherFormModal">
+        <div class="modal" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="voucherFormTitle">Create New Voucher</h3>
+                <button class="modal-close" onclick="Vouchers.closeModal('voucherFormModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="voucherForm">
+                    <!-- Row 1: Old Voucher Number with Lookup -->
+                    <div class="form-group">
+                        <label for="formOldVoucherNumber">Old Voucher Number</label>
+                        <div class="input-with-button">
+                            <input type="text" class="form-control" id="formOldVoucherNumber" 
+                                   placeholder="Enter old voucher number for revalidation">
+                            <button type="button" class="btn btn-secondary" onclick="Vouchers.inlineLookup()">
+                                <i class="fas fa-search"></i> Look-up
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Payee and Account -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="formPayee">Payee <span class="required">*</span></label>
+                            <input type="text" class="form-control" id="formPayee" required
+                                   placeholder="Enter payee name">
+                        </div>
+                        <div class="form-group">                            
+                            <label for="formPayee">Account or Email (Voucher Number) <span class="required">*</span></label>
+                            <input type="text" class="form-control" id="formAccountOrMail"
+                                   placeholder="Enter account number or email">
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Particular -->
+                    <div class="form-group">                        
+                        <label for="formPayee">Particular <span class="required">*</span></label>
+                        <textarea class="form-control" id="formParticular" rows="2"
+                                  placeholder="Enter description/particular"></textarea>
+                    </div>
+
+                    <!-- Row 4: Contract Sum and Gross Amount -->
+                    <div class="form-row">
+                        <div class="form-group">                            
+                            <label for="formPayee">Contract Sum <span class="required">*</span></label>
+                            <input type="number" class="form-control" id="formContractSum" 
+                                   step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="formGrossAmount">Gross Amount (₦) <span class="required">*</span></label>
+                            <input type="number" class="form-control" id="formGrossAmount" 
+                                   step="0.01" min="0" required placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <!-- Row 5: NET and VAT -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="formNet">NET (₦)</label>
+                            <input type="number" class="form-control" id="formNet" 
+                                   step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="formVat">VAT (₦)</label>
+                            <input type="number" class="form-control" id="formVat" 
+                                   step="0.01" min="0" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <!-- Row 6: WHT and Stamp Duty -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="formWht">WHT (₦)</label>
+                            <input type="number" class="form-control" id="formWht" 
+                                   step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="formStampDuty">Stamp Duty (₦)</label>
+                            <input type="number" class="form-control" id="formStampDuty" 
+                                   step="0.01" min="0" placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <!-- Row 7: Category and Account Type -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="formCategories">Category</label>
+                            <select class="form-control category-select" id="formCategories">
+                                <option value="">Select Category</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="formAccountType">Account Type</label>
+                            <select class="form-control" id="formAccountType">
+                                <option value="">Select Type</option>
+                                <option value="Capital">Capital</option>
+                                <option value="OHD">OHD</option>
+                                <option value="Project">Project</option>
+                                <option value="RFA">RFA</option>
+                                <option value="TSA">TSA</option>                            
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 8: Control Number and Date -->
+                    <div class="form-row">                        
+                        <div class="form-group">
+                            <label for="formDate">Date</label>
+                            <input type="date" class="form-control" id="formDate">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="Vouchers.closeModal('voucherFormModal')">
+                    Cancel
+                </button>
+                <button type="button" class="btn btn-primary" onclick="Vouchers.saveVoucher()">
+                    <i class="fas fa-save"></i> Save Voucher
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lookup Modal - UPDATED -->
+<div class="modal-overlay" id="lookupModal">
+    <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-search"></i> Look-up Voucher</h3>
+            <button class="modal-close" onclick="Vouchers.closeModal('lookupModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-2">
+                Search for vouchers by Voucher Number in previous years (2025, 2024, 2023, &lt;2023) for revalidation.
+            </p>
+            
+            <div class="form-group">
+                <label for="lookupVoucherNumber">Voucher Number <span class="required">*</span></label>
+                <input type="text" class="form-control" id="lookupVoucherNumber"
+                       placeholder="Enter the voucher number to search">
+            </div>
+            
+            <button class="btn btn-primary" onclick="Vouchers.performLookup()" style="width: 100%;">
+                <i class="fas fa-search"></i> Search
+            </button>
+            
+            <div id="lookupResult" class="hidden" style="margin-top: 20px;">
+                <!-- Results populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Control Number Modal - NEW -->
+<div class="modal-overlay" id="assignControlModal">
+    <div class="modal" style="max-width: 450px;">
+        <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-tag"></i> Assign Control Number</h3>
+            <button class="modal-close" onclick="Vouchers.closeModal('assignControlModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-2">
+                Assign a control number to <strong id="selectedCount">0</strong> selected voucher(s).
+            </p>
+            
+            <div class="form-group">
+                <label for="newControlNumber">Control Number <span class="required">*</span></label>
+                <input type="text" class="form-control" id="newControlNumber"
+                       placeholder="Enter control number (e.g., CN-2026-001)">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="Vouchers.closeModal('assignControlModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="Vouchers.assignControlNumber()">
+                <i class="fas fa-check"></i> Assign
+            </button>
+        </div>
+    </div>
+</div>
+
+    <!-- Status Update Modal -->
+    <div class="modal-overlay" id="statusModal">
+        <div class="modal" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-edit"></i> Update Status</h3>
+                <button class="modal-close" onclick="Vouchers.closeModal('statusModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="statusVoucherInfo" class="mb-2" style="padding: 10px; background: var(--secondary-color); border-radius: var(--radius-sm);">
+                    <!-- Voucher info populated by JavaScript -->
+                </div>
+                
+                <div class="form-group">                    
+                    <label for="nnewStatus">Status <span class="required">*</span></label>
+                    <select class="form-control" id="newStatus">
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="pmtMonthGroup">                    
+                    <label for="newPmtMonth">Payment Month <span class="required">*</span></label>
+                    <select class="form-control" id="newPmtMonth">
+                        <option value="">Select Month</option>
+                        <option value="January">January</option>
+                        <option value="February">February</option>
+                        <option value="March">March</option>
+                        <option value="April">April</option>
+                        <option value="May">May</option>
+                        <option value="June">June</option>
+                        <option value="July">July</option>
+                        <option value="August">August</option>
+                        <option value="September">September</option>
+                        <option value="October">October</option>
+                        <option value="November">November</option>
+                        <option value="December">December</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Vouchers.closeModal('statusModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="Vouchers.saveStatus()">
+                    <i class="fas fa-check"></i> Update
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Status Update Modal -->
+    <div class="modal-overlay" id="batchStatusModal">
+        <div class="modal" style="max-width: 450px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-check-double"></i> Batch Update Status</h3>
+                <button class="modal-close" onclick="Vouchers.closeModal('batchStatusModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-2">
+                    Update status for all vouchers with the same control number.
+                </p>
+                
+                <div class="form-group">
+                    <label for="batchControlNumber">Control Number <span class="required">*</span></label>
+                    <input type="text" class="form-control" id="batchControlNumber"
+                           placeholder="Enter control number">
+                </div>
+                
+                <div class="form-group">
+                    <label for="batchStatus">New Status</label>
+                    <select class="form-control" id="batchStatus">
+                        <option value="Paid">Paid</option>
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="batchPmtMonth">Payment Month</label>
+                    <select class="form-control" id="batchPmtMonth">
+                        <option value="">Select Month</option>
+                        <option value="January">January</option>
+                        <option value="February">February</option>
+                        <option value="March">March</option>
+                        <option value="April">April</option>
+                        <option value="May">May</option>
+                        <option value="June">June</option>
+                        <option value="July">July</option>
+                        <option value="August">August</option>
+                        <option value="September">September</option>
+                        <option value="October">October</option>
+                        <option value="November">November</option>
+                        <option value="December">December</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Vouchers.closeModal('batchStatusModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="Vouchers.saveBatchStatus()">
+                    <i class="fas fa-check-double"></i> Update All
+                </button>
+            </div>
+        </div>
+    </div>
+
+        <!-- Release to Unit Modal - UPDATED -->
+    <div class="modal-overlay" id="releaseModal">
+        <div class="modal" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-paper-plane"></i> Release Vouchers</h3>
+                <button class="modal-close" onclick="Vouchers.closeModal('releaseModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Step 1: Search and Select -->
+                <div id="releaseStep1">
+                    <h4><i class="fas fa-search"></i> Step 1: Search & Select Vouchers</h4>
+                    
+                    <div class="form-group">
+                        <label>Search Vouchers</label>
+                        <div class="input-with-button">
+                            <input type="text" class="form-control" id="releaseSearchInput" 
+                                   placeholder="Search by name, voucher no, amount, keywords...">
+                            <button type="button" class="btn btn-primary" onclick="Vouchers.searchForRelease()">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row" style="margin-bottom: 15px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <select class="form-control" id="releaseStatusFilter">
+                                <option value="All">All Status</option>
+                                <option value="Unpaid" selected>Unpaid</option>
+                                <option value="Paid">Paid</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <select class="form-control category-select" id="releaseCategoryFilter">
+                                <option value="All">All Categories</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="releaseSearchResults" class="release-search-results">
+                        <p class="text-muted text-center">Enter search criteria and click Search</p>
+                    </div>
+                    
+                    <div id="releaseSelectedList" class="release-selected-list hidden">
+                        <h5><i class="fas fa-check-circle"></i> Selected Vouchers (<span id="releaseSelectedCount">0</span>)</h5>
+                        <div id="releaseSelectedTags" class="release-tags"></div>
+                        <p class="mt-1"><strong>Total Amount:</strong> <span id="releaseSelectedTotal">₦0.00</span></p>
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="Vouchers.proceedToReleaseStep2()" style="width: 100%; margin-top: 15px;">
+                        Continue to Release Details <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+                
+                <!-- Step 2: Release Details -->
+                <div id="releaseStep2" class="hidden">
+                    <h4><i class="fas fa-tag"></i> Step 2: Release Details</h4>
+                    
+                    <div class="release-summary-box mb-2" id="releaseSummaryBox">
+                        <p class="text-muted">Summary will appear here...</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="releaseTargetUnit">Target Unit <span class="required">*</span></label>
+                        <select class="form-control" id="releaseTargetUnit" onchange="Vouchers.handleTargetUnitChange()">
+                            <option value="">Select Target Unit</option>
+                            <option value="CPO">CPO (Central Pay Office)</option>
+                            <option value="Audit">Audit Unit</option>
+                            <option value="DDFA">DDFA</option>
+                            <option value="DFA">DFA</option>
+                            <option value="Others">Others: Indicate</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Custom Target Unit Input (hidden by default) -->
+                    <div class="form-group hidden" id="customTargetUnitGroup">
+                        <label for="customTargetUnit">Specify Target Unit <span class="required">*</span></label>
+                        <input type="text" class="form-control" id="customTargetUnit" 
+                               placeholder="Enter the target unit name">
+                    </div>
+                    
+                    <!-- Control Number (auto-generated for Payable, hidden for CPO) -->
+                    <div class="form-group" id="controlNumberGroup">
+                        <label for="releaseControlNumber">Control Number</label>
+                        <div class="input-with-button">
+                            <input type="text" class="form-control" id="releaseControlNumber" 
+                                   placeholder="Auto-generated or enter manually">
+                            <button type="button" class="btn btn-secondary" onclick="Vouchers.generateControlNumber()">
+                                <i class="fas fa-magic"></i> Auto-Generate
+                            </button>
+                        </div>
+                        <small class="text-muted">Format: CN-[UNIT]-[BATCH_NUMBER] (e.g., CN-CPO-021)</small>
+                    </div>
+                    
+                    <!-- Purpose (for CPO releasing to other units) -->
+                    <div class="form-group hidden" id="releasePurposeGroup">
+                        <label for="releasePurpose">Purpose for Release <span class="required">*</span></label>
+                        <textarea class="form-control" id="releasePurpose" rows="2"
+                    placeholder="Enter the purpose/reason for releasing these vouchers"></textarea>
+                    </div>
+                    
+                    <div class="alert alert-info hidden" id="releaseWarning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="releaseWarningText"></span>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 20px;">
+                        <button class="btn btn-secondary" onclick="Vouchers.backToReleaseStep1()" style="flex: 1;">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </button>
+                        <button class="btn btn-primary" onclick="Vouchers.submitRelease()" style="flex: 2;">
+                            <i class="fas fa-paper-plane"></i> Release Vouchers
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Deletions (for approvers) -->
+        <div class="card mb-2" id="pendingDeletionsCard" style="display: none;">
+            <div class="card-header" style="background: #fff3cd;">
+                <h3 class="card-title" style="color: #856404;">
+                    <i class="fas fa-exclamation-triangle"></i> Pending Deletion Approvals
+                    <span class="badge badge-warning" id="pendingCount">0</span>
+                </h3>
+                <button class="btn btn-sm btn-secondary" onclick="Vouchers.togglePendingDeletions()">
+                    <span id="pendingToggleText">Show</span>
+                </button>
+            </div>
+            <div class="card-body hidden" id="pendingDeletionsList">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Delete Request Modal -->
+        <div class="modal-overlay" id="deleteRequestModal">
+            <div class="modal" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h3 class="modal-title"><i class="fas fa-trash-alt"></i> Request Voucher Deletion</h3>
+                    <button class="modal-close" onclick="Vouchers.closeModal('deleteRequestModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <!-- Voucher Info -->
+                    <div class="alert alert-warning" style="margin-bottom: 20px;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>You are requesting to delete this voucher:</strong>
+                    </div>
+                    
+                    <div id="deleteVoucherInfo" style="background: var(--secondary-color); padding: 15px; border-radius: var(--radius); margin-bottom: 20px;">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    
+                    <!-- Reason Input -->
+                    <div class="form-group">
+                        <label for="deleteReason">
+                            Reason for Deletion <span class="required">*</span>
+                        </label>
+                        <textarea class="form-control" id="deleteReason" rows="3" 
+                                placeholder="Please explain why this voucher should be deleted..."
+                                required></textarea>
+                        <small class="text-muted">This reason will be sent to approvers and recorded in the audit trail.</small>
+                    </div>
+                    
+                    <!-- Approval Notice -->
+                    <div class="alert alert-info" id="deleteApprovalNotice">
+                        <i class="fas fa-info-circle"></i>
+                        <span id="deleteApprovalText">This will require approval from Payable Unit Head or Admin.</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="Vouchers.closeModal('deleteRequestModal')">
+                        Cancel
+                    </button>
+                    <button class="btn btn-danger" onclick="Vouchers.submitDeleteRequest()">
+                        <i class="fas fa-trash"></i> Submit Deletion Request
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reject Deletion Modal -->
+        <div class="modal-overlay" id="rejectDeleteModal">
+            <div class="modal" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h3 class="modal-title"><i class="fas fa-times-circle"></i> Reject Deletion Request</h3>
+                    <button class="modal-close" onclick="Vouchers.closeModal('rejectDeleteModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="rejectVoucherInfo" style="background: var(--secondary-color); padding: 15px; border-radius: var(--radius); margin-bottom: 20px;">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="rejectReason">
+                            Reason for Rejection <span class="text-muted">(Optional)</span>
+                        </label>
+                        <textarea class="form-control" id="rejectReason" rows="3" 
+                                placeholder="Explain why this deletion request is being rejected..."></textarea>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        The voucher will be restored to its <strong>original status</strong> before the deletion request.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="Vouchers.closeModal('rejectDeleteModal')">
+                        Cancel
+                    </button>
+                    <button class="btn btn-warning" onclick="Vouchers.submitRejectDelete()">
+                        <i class="fas fa-times"></i> Reject Request
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/activity-tracker.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/vouchers.js"></script>
+    
+    <!-- Show CPO/Payable actions based on role -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // This runs after Vouchers.init() since vouchers.js loads first
+            setTimeout(() => {
+                const user = Auth.getUser();
+                if (user) {
+                    const allowedRoles = [
+                        CONFIG.ROLES.CPO, 
+                        CONFIG.ROLES.ADMIN, 
+                        CONFIG.ROLES.PAYABLE_STAFF, 
+                        CONFIG.ROLES.PAYABLE_HEAD
+                    ];
+                    if (allowedRoles.includes(user.role)) {
+                        const cpoActions = document.getElementById('cpoActions');
+                        if (cpoActions) cpoActions.style.display = 'block';
+                    }
+                }
+            }, 500);
+        });
+    </script>
+    <script src="js/footer.js"></script>
+</body>
+</html>
+
