@@ -23,10 +23,13 @@ const Vouchers = {
   isEditMode: false,
 
   filters: {
-    status: 'All',
-    category: 'All',
-    searchTerm: ''
-  },
+  status: 'All',
+  category: 'All',
+  searchTerm: '',
+  amountMin: '',
+  amountMax: '',
+  release: 'All'
+},
 
   // Global Search
   isGlobalSearchMode: false,
@@ -399,28 +402,37 @@ const Vouchers = {
   },
 
   applyFilters() {
-    this.filters.status = document.getElementById('statusFilter').value;
-    this.filters.category = document.getElementById('categoryFilter').value;
-    this.filters.searchTerm = document.getElementById('searchInput').value.trim();
+    this.filters.status = document.getElementById('statusFilter')?.value || 'All';
+    this.filters.category = document.getElementById('categoryFilter')?.value || 'All';
+    this.filters.searchTerm = document.getElementById('searchInput')?.value.trim() || '';
+
+    this.filters.amountMin = document.getElementById('amountMinFilter')?.value || '';
+    this.filters.amountMax = document.getElementById('amountMaxFilter')?.value || '';
+    this.filters.release   = document.getElementById('releaseFilter')?.value || 'All';
 
     this.currentPage = 1;
 
-    // If there is a search term => global search across all years
+    // If there’s any search term, keep your global search behavior
     if (this.filters.searchTerm) {
       this.globalSearch();
       return;
     }
 
-    // Otherwise normal 2026 paginated load
     this.isGlobalSearchMode = false;
     this.loadVouchers();
   },
 
   clearFilters() {
-    const s = document.getElementById('statusFilter'); if (s) s.value = 'All';
-    const c = document.getElementById('categoryFilter'); if (c) c.value = 'All';
-    const q = document.getElementById('searchInput'); if (q) q.value = '';
-    this.filters = { status: 'All', category: 'All', searchTerm: '' };
+    document.getElementById('statusFilter').value = 'All';
+    document.getElementById('categoryFilter').value = 'All';
+    document.getElementById('searchInput').value = '';
+    document.getElementById('amountMinFilter') && (document.getElementById('amountMinFilter').value = '');
+    document.getElementById('amountMaxFilter') && (document.getElementById('amountMaxFilter').value = '');
+    document.getElementById('releaseFilter') && (document.getElementById('releaseFilter').value = 'All');
+
+    this.filters = { status:'All', category:'All', searchTerm:'', amountMin:'', amountMax:'', release:'All' };
+
+    this.isGlobalSearchMode = false;
     this.currentPage = 1;
     this.loadVouchers();
   },

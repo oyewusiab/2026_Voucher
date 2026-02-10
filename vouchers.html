@@ -192,6 +192,21 @@
                     </button>
                 </div>
             </div>
+            <div>
+            <input type="number" class="form-control" id="amountMinFilter" placeholder="Min Amount" step="0.01" min="0">
+            </div>
+
+            <div>
+            <input type="number" class="form-control" id="amountMaxFilter" placeholder="Max Amount" step="0.01" min="0">
+            </div>
+
+            <div>
+            <select class="form-control" id="releaseFilter">
+                <option value="All">All</option>
+                <option value="Released">Released (Has CN)</option>
+                <option value="Not Released">Not Released (No CN)</option>
+            </select>
+            </div>
 
             <!-- Quick Actions for CPO -->
             <div class="card mb-2" id="cpoActions" style="display: none;">
