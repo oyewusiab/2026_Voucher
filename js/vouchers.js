@@ -194,10 +194,10 @@ const Vouchers = {
 
     const user = Auth.getUser();
     const canSelect = user && [
-        CONFIG.ROLES.PAYABLE_STAFF,
-        CONFIG.ROLES.PAYABLE_HEAD,
-        CONFIG.ROLES.ADMIN,
-        CONFIG.ROLES.CPO        
+      CONFIG.ROLES.PAYABLE_STAFF,
+      CONFIG.ROLES.PAYABLE_HEAD,
+      CONFIG.ROLES.ADMIN,
+      CONFIG.ROLES.CPO
     ].includes(user.role);
 
     let html = `
@@ -205,7 +205,7 @@ const Vouchers = {
         <table>
           <thead>
             <tr>
-              ${canSelect ? '<th><input type="checkbox" id="selectAll"></th>' : ''}
+              ${canSelect ? '<th><input type="checkbox" id="selectAll" onchange="Vouchers.toggleSelectAll()"></th>' : ''}
               <th>S/N</th>
               <th>Voucher No.</th>
               <th>Payee</th>
@@ -227,11 +227,15 @@ const Vouchers = {
       const sn = startSN + idx + 1;
       html += `
         <tr data-row="${v.rowIndex}">
-          ${canSelect ? `<td><input type="checkbox" class="voucher-checkbox" value="${v.rowIndex}"></td>` : ''}
+          ${
+            canSelect
+              ? `<td><input type="checkbox" class="voucher-checkbox" value="${v.rowIndex}" onchange="Vouchers.updateSelection()"></td>`
+              : ''
+          }
           <td>${sn}</td>
           <td><strong>${v.accountOrMail || '-'}</strong></td>
-          <td title="${v.payee || ''}">${Utils.truncate(v.payee || '', 20)}</td>
-          <td title="${v.particular || ''}">${Utils.truncate(v.particular || '', 25)}</td>
+          <td title="${v.payee || ''}">${Utils.truncate(v.payee || '-', 20)}</td>
+          <td title="${v.particular || ''}">${Utils.truncate(v.particular || '-', 25)}</td>
           <td>${Utils.formatCurrency(v.grossAmount || 0)}</td>
           <td>${v.categories || '-'}</td>
           <td>${v.controlNumber || '<span class="text-muted">-</span>'}</td>
@@ -239,7 +243,7 @@ const Vouchers = {
           <td>${v.pmtMonth || '-'}</td>
           <td>
             <div class="action-buttons">
-              <button class="btn btn-sm btn-secondary" data-action="view" data-row="${v.rowIndex}" title="View">
+              <button class="btn btn-sm btn-secondary" onclick="Vouchers.viewVoucher(${v.rowIndex})" title="View">
                 <i class="fas fa-eye"></i>
               </button>
               ${this.getActionButtons(v)}
@@ -251,6 +255,10 @@ const Vouchers = {
 
     html += '</tbody></table></div>';
     container.innerHTML = html;
+
+    // Keep your existing selection/pagination behavior
+    this.updateSelection?.();
+    this.renderPagination?.();
 
     // bind checkbox handlers + view handlers (avoids inline duplicate binding issues)
     if (canSelect) {
@@ -397,13 +405,13 @@ const Vouchers = {
 
     this.currentPage = 1;
 
-    // If user typed something, do cross-year search
+    // If there is a search term => global search across all years
     if (this.filters.searchTerm) {
       this.globalSearch();
       return;
     }
 
-    // Otherwise normal 2026 paginated flow
+    // Otherwise normal 2026 paginated load
     this.isGlobalSearchMode = false;
     this.loadVouchers();
   },
@@ -1286,52 +1294,46 @@ const Vouchers = {
   },
 
   async globalSearch() {
-  const term = (this.filters.searchTerm || '').trim();
-  if (!term) {
-    this.isGlobalSearchMode = false;
-    return this.loadVouchers();
-  }
-
-  // Turn on global mode
-  this.isGlobalSearchMode = true;
-
-  this.showLoading(true);
-
-  try {
-    const years = this.globalSearchYears || ['2026', '2025', '2024', '2023', '<2023'];
-    const allResults = [];
-
-    // Build a filter object to reuse your current filters across years
-    const filters = {
-      searchTerm: term,
-      status: this.filters.status,
-      category: this.filters.category
-    };
-
-    // Sequential calls (safe). Can be optimized to Promise.all later.
-    for (const year of years) {
-      const result = await API.getVouchers(year, filters, 1, 200); // page/pageSize if backend supports it
-      if (result && result.success && Array.isArray(result.vouchers) && result.vouchers.length) {
-        result.vouchers.forEach(v => {
-          allResults.push({ ...v, sourceYear: year });
-        });
-      }
+    const term = (this.filters.searchTerm || '').trim();
+    if (!term) {
+      this.isGlobalSearchMode = false;
+      return this.loadVouchers();
     }
 
-    // Put results into the list renderer
-    this.vouchers = allResults;
-    this.totalCount = allResults.length;
-    this.totalPages = 1;
-    this.currentPage = 1;
+    this.isGlobalSearchMode = true;
+    this.showLoading(true);
 
-    this.renderGlobalSearchResults();
-  } catch (e) {
-    console.error('Global search error:', e);
-    Utils.showToast('Global search failed', 'error');
-  }
+    try {
+      const years = this.globalSearchYears || ['2026', '2025', '2024', '2023', '<2023'];
+      const allResults = [];
 
-  this.showLoading(false);
-},
+      const filters = {
+        searchTerm: term,
+        status: this.filters.status,
+        category: this.filters.category
+      };
+
+      // Sequential calls (safe)
+      for (const year of years) {
+        const result = await API.getVouchers(year, filters, 1, 200);
+        if (result && result.success && Array.isArray(result.vouchers) && result.vouchers.length) {
+          result.vouchers.forEach(v => allResults.push({ ...v, sourceYear: year }));
+        }
+      }
+
+      this.vouchers = allResults;
+      this.totalCount = allResults.length;
+      this.totalPages = 1;
+      this.currentPage = 1;
+
+      this.renderGlobalSearchResults();
+    } catch (e) {
+      console.error('Global search error:', e);
+      Utils.showToast('Global search failed', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
 
   renderGlobalSearchResults() {
     const container = document.getElementById('vouchersList');
