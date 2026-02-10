@@ -28,6 +28,10 @@ const Vouchers = {
     searchTerm: ''
   },
 
+  // Global Search
+  isGlobalSearchMode: false,
+  globalSearchYears: ['2026', '2025', '2024', '2023', '<2023'],
+
   // Pending deletions
   pendingDeletionsLoaded: false,
   pendingDeletions: [],
@@ -387,10 +391,20 @@ const Vouchers = {
   },
 
   applyFilters() {
-    this.filters.status = document.getElementById('statusFilter')?.value || 'All';
-    this.filters.category = document.getElementById('categoryFilter')?.value || 'All';
-    this.filters.searchTerm = document.getElementById('searchInput')?.value.trim() || '';
+    this.filters.status = document.getElementById('statusFilter').value;
+    this.filters.category = document.getElementById('categoryFilter').value;
+    this.filters.searchTerm = document.getElementById('searchInput').value.trim();
+
     this.currentPage = 1;
+
+    // If user typed something, do cross-year search
+    if (this.filters.searchTerm) {
+      this.globalSearch();
+      return;
+    }
+
+    // Otherwise normal 2026 paginated flow
+    this.isGlobalSearchMode = false;
     this.loadVouchers();
   },
 
@@ -1269,6 +1283,217 @@ const Vouchers = {
     } finally {
       this.showLoading(false);
     }
+  },
+
+  async globalSearch() {
+  const term = (this.filters.searchTerm || '').trim();
+  if (!term) {
+    this.isGlobalSearchMode = false;
+    return this.loadVouchers();
+  }
+
+  // Turn on global mode
+  this.isGlobalSearchMode = true;
+
+  this.showLoading(true);
+
+  try {
+    const years = this.globalSearchYears || ['2026', '2025', '2024', '2023', '<2023'];
+    const allResults = [];
+
+    // Build a filter object to reuse your current filters across years
+    const filters = {
+      searchTerm: term,
+      status: this.filters.status,
+      category: this.filters.category
+    };
+
+    // Sequential calls (safe). Can be optimized to Promise.all later.
+    for (const year of years) {
+      const result = await API.getVouchers(year, filters, 1, 200); // page/pageSize if backend supports it
+      if (result && result.success && Array.isArray(result.vouchers) && result.vouchers.length) {
+        result.vouchers.forEach(v => {
+          allResults.push({ ...v, sourceYear: year });
+        });
+      }
+    }
+
+    // Put results into the list renderer
+    this.vouchers = allResults;
+    this.totalCount = allResults.length;
+    this.totalPages = 1;
+    this.currentPage = 1;
+
+    this.renderGlobalSearchResults();
+  } catch (e) {
+    console.error('Global search error:', e);
+    Utils.showToast('Global search failed', 'error');
+  }
+
+  this.showLoading(false);
+},
+
+  renderGlobalSearchResults() {
+    const container = document.getElementById('vouchersList');
+    if (!container) return;
+
+    const countEl = document.getElementById('voucherCount');
+    if (countEl) {
+      countEl.textContent = `Found ${this.vouchers.length} voucher(s) across all years`;
+    }
+
+    if (!this.vouchers.length) {
+      container.innerHTML = Components.getEmptyState('No vouchers found across all years', 'fa-search');
+      document.getElementById('paginationContainer').innerHTML = '';
+      return;
+    }
+
+    let html = `
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Voucher No.</th>
+              <th>Payee</th>
+              <th>Particular</th>
+              <th>Gross Amount</th>
+              <th>Status</th>
+              <th>Control No.</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    this.vouchers.forEach(v => {
+      const yearBadgeClass = v.sourceYear === '2026' ? 'badge-paid' : 'badge-unpaid';
+
+      html += `
+        <tr>
+          <td><span class="badge ${yearBadgeClass}">${v.sourceYear || '-'}</span></td>
+          <td><strong>${v.accountOrMail || '-'}</strong></td>
+          <td title="${v.payee || ''}">${Utils.truncate(v.payee || '-', 20)}</td>
+          <td title="${v.particular || ''}">${Utils.truncate(v.particular || '-', 25)}</td>
+          <td>${Utils.formatCurrency(v.grossAmount)}</td>
+          <td>${Utils.getStatusBadge(v.status)}</td>
+          <td>${v.controlNumber || '-'}</td>
+          <td>
+            <button class="btn btn-sm btn-secondary"
+                    onclick="Vouchers.viewVoucherByYear(${v.rowIndex}, '${v.sourceYear}')"
+                    title="View">
+              <i class="fas fa-eye"></i>
+            </button>
+            ${
+              v.sourceYear === '2026'
+                ? `<button class="btn btn-sm btn-primary" onclick="Vouchers.editVoucher(${v.rowIndex})" title="Edit">
+                    <i class="fas fa-edit"></i>
+                  </button>`
+                : ''
+            }
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+
+    // No pagination in global mode
+    const pag = document.getElementById('paginationContainer');
+    if (pag) pag.innerHTML = '';
+  },
+
+  async viewVoucherByYear(rowIndex, year) {
+    // If year is 2026, you can reuse your existing viewVoucher
+    if (!year || year === '2026') {
+      return this.viewVoucher(rowIndex);
+    }
+
+    this.showLoading(true);
+    try {
+      const result = await API.getVoucherByRow(rowIndex, year);
+      if (!result.success || !result.voucher) {
+        Utils.showToast('Voucher not found', 'error');
+        return;
+      }
+
+      // Temporarily show using the same modal layout
+      const voucher = result.voucher;
+
+      const modal = document.getElementById('viewVoucherModal');
+      const content = document.getElementById('viewVoucherContent');
+
+      content.innerHTML = `
+        <div class="voucher-details">
+          <div class="detail-group full-width">
+            <label>Source Year</label>
+            <div><strong>${year}</strong></div>
+          </div>
+
+          <div class="detail-row">
+            <div class="detail-group">
+              <label>Status</label>
+              <div>${Utils.getStatusBadge(voucher.status)}</div>
+            </div>
+            <div class="detail-group">
+              <label>Payment Month</label>
+              <div>${voucher.pmtMonth || '-'}</div>
+            </div>
+          </div>
+
+          <div class="detail-row">
+            <div class="detail-group">
+              <label>Voucher Number</label>
+              <div><strong>${voucher.accountOrMail || '-'}</strong></div>
+            </div>
+            <div class="detail-group">
+              <label>Control Number</label>
+              <div>${voucher.controlNumber || '-'}</div>
+            </div>
+          </div>
+
+          <div class="detail-group full-width">
+            <label>Payee</label>
+            <div><strong>${voucher.payee || '-'}</strong></div>
+          </div>
+
+          <div class="detail-group full-width">
+            <label>Particular</label>
+            <div>${voucher.particular || '-'}</div>
+          </div>
+
+          <div class="detail-row">
+            <div class="detail-group">
+              <label>Gross Amount</label>
+              <div class="total-amount">${Utils.formatCurrency(voucher.grossAmount)}</div>
+            </div>
+            <div class="detail-group">
+              <label>Date</label>
+              <div>${Utils.formatDate(voucher.date)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      modal.classList.add('active');
+    } catch (e) {
+      console.error('viewVoucherByYear error:', e);
+      Utils.showToast('Error loading voucher', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  clearFilters() {
+    document.getElementById('statusFilter').value = 'All';
+    document.getElementById('categoryFilter').value = 'All';
+    document.getElementById('searchInput').value = '';
+    this.filters = { status: 'All', category: 'All', searchTerm: '' };
+
+    this.isGlobalSearchMode = false; // <-- add this
+    this.currentPage = 1;
+    this.loadVouchers();
   },
 
   renderReleaseSearchResults() {
