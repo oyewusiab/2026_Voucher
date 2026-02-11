@@ -189,6 +189,37 @@
     </div>
 </div>
 
+    <div class="report-section">
+    <h2 class="report-section-title">
+        <i class="fas fa-chart-pie"></i> Status Distribution
+    </h2>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-hashtag"></i> By Count</h3>
+            <button class="btn btn-sm btn-secondary" onclick="Reports.downloadChart('statusCountChart', 'Status_By_Count')">
+            <i class="fas fa-download"></i> PNG
+            </button>
+        </div>
+        <div class="card-body">
+            <canvas id="statusCountChart" height="160"></canvas>
+        </div>
+        </div>
+
+        <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-naira-sign"></i> By Amount</h3>
+            <button class="btn btn-sm btn-secondary" onclick="Reports.downloadChart('statusAmountChart', 'Status_By_Amount')">
+            <i class="fas fa-download"></i> PNG
+            </button>
+        </div>
+        <div class="card-body">
+            <canvas id="statusAmountChart" height="160"></canvas>
+        </div>
+        </div>
+    </div>
+    </div>
 
             <!-- Category Breakdown Section -->
             <div class="report-section">
@@ -274,6 +305,24 @@
                 </div>
             </div>
 
+            <div class="report-section">
+                <h2 class="report-section-title">
+                    <i class="fas fa-chart-line"></i> Outstanding Debt Trend (All Years)
+                </h2>
+
+                <div class="card">
+                    <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-wave-square"></i> Trend</h3>
+                    <button class="btn btn-sm btn-secondary" onclick="Reports.downloadChart('debtTrendChart', 'Debt_Trend')">
+                        <i class="fas fa-download"></i> PNG
+                    </button>
+                    </div>
+                    <div class="card-body">
+                    <canvas id="debtTrendChart" height="120"></canvas>
+                    </div>
+                </div>
+                </div>
+
             <!-- Debt Profile Section -->
             <div class="report-section">
                 <h2 class="report-section-title">
@@ -306,29 +355,43 @@
                     </div>
                 </div>
             </div>
-
+            
+            <div class="report-section">
+            <div class="card">
+                <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-users"></i> Top Debtors (Chart)</h3>
+                <button class="btn btn-sm btn-secondary" onclick="Reports.downloadChart('topDebtorsChart', 'Top_Debtors')">
+                    <i class="fas fa-download"></i> PNG
+                </button>
+                </div>
+                <div class="card-body">
+                <canvas id="topDebtorsChart" height="130"></canvas>
+                </div>
+            </div>
+            </div>
 
     <!-- Scripts -->
-    <script src="js/config.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/activity-tracker.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/notifications.js"></script>
-    <script src="js/components.js"></script>
-    <script src="js/chat.js"></script>
-    <script src="js/reports.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/activity-tracker.js"></script>
+<script src="js/api.js"></script>
+<script src="js/notifications.js"></script>
+<script src="js/components.js"></script>
+<script src="js/chat.js"></script>
+
+<!-- Chart.js MUST come before reports.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- reports.js only once -->
+<script src="js/reports.js"></script>
+
+<script src="js/footer.js"></script>
     <script>
-        // Set report date
-        document.getElementById('reportDate').textContent = new Date().toLocaleString();
         
         // Update year label when selector changes
         document.getElementById('yearSelector').addEventListener('change', function() {
             document.getElementById('currentYearLabel').textContent = this.value;
         });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="js/reports.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="js/footer.js"></script>
 </body>
 </html>

@@ -11,6 +11,10 @@ const Reports = {
     debtProfile: null,
     categoryChart: null,
     monthlyChart: null,
+    statusCountChart: null,
+    statusAmountChart: null,
+    debtTrendChart: null,
+    topDebtorsChart: null,
     
     /**
      * Initialize reports page
@@ -94,6 +98,7 @@ const Reports = {
             this.renderMonthlyTable(result.monthlyBreakdown);
             this.drawCategoryChart(result.categoryBreakdown);
             this.drawMonthlyChart(result.monthlyBreakdown);
+            this.drawStatusCharts(result.summary);
         } else {
             Utils.showToast(result.error || 'Failed to load summary', 'error');
         }
@@ -214,6 +219,7 @@ const Reports = {
         if (result.success) {
             this.allYearsData = result;
             this.renderAllYearsSummary(result);
+            this.drawDebtTrendChart(result);
         } else {
             Utils.showToast(result.error || 'Failed to load all-years summary', 'error');
         }
@@ -228,11 +234,144 @@ const Reports = {
         if (result.success) {
             this.debtProfile = result;
             this.renderDebtProfile(result);
+            this.drawTopDebtorsChart(result);
         } else {
             Utils.showToast(result.error || 'Failed to load debt profile', 'error');
         }
     },
     
+    drawStatusCharts(summary) {
+        if (!summary) return;
+
+        const countCtx = document.getElementById('statusCountChart');
+        const amtCtx = document.getElementById('statusAmountChart');
+        if (!countCtx || !amtCtx) return;
+
+        const paidCount = Number(summary.paidVouchers || 0);
+        const unpaidCount = Number(summary.unpaidVouchers || 0);
+        const cancelledCount = Number(summary.cancelledVouchers || 0);
+
+        const paidAmt = Number(summary.totalPaidAmount || 0);
+        const unpaidAmt = Number(summary.totalUnpaidAmount || 0);
+        const cancelledAmt = Number(summary.totalCancelledAmount || 0);
+
+        // Destroy previous
+        if (this.statusCountChart) this.statusCountChart.destroy();
+        if (this.statusAmountChart) this.statusAmountChart.destroy();
+
+        const labels = ['Paid', 'Unpaid', 'Cancelled'];
+        const colors = ['#28a745', '#ffc107', '#dc3545'];
+
+        this.statusCountChart = new Chart(countCtx, {
+            type: 'doughnut',
+            data: {
+            labels,
+            datasets: [{ data: [paidCount, unpaidCount, cancelledCount], backgroundColor: colors }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+
+        this.statusAmountChart = new Chart(amtCtx, {
+            type: 'doughnut',
+            data: {
+            labels,
+            datasets: [{ data: [paidAmt, unpaidAmt, cancelledAmt], backgroundColor: colors }]
+            },
+            options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                callbacks: {
+                    label: (ctx) => `${ctx.label}: ₦${Number(ctx.raw || 0).toLocaleString()}`
+                }
+                }
+            }
+            }
+        });
+        },
+
+        drawDebtTrendChart(allYearsData) {
+        const ctx = document.getElementById('debtTrendChart');
+        if (!ctx || !allYearsData || !allYearsData.yearsSummary) return;
+
+        const points = allYearsData.yearsSummary
+            .filter(y => !y.error && y.label)
+            .map(y => ({ year: y.label, balance: Number(y.currentBalance || 0) }));
+
+        if (this.debtTrendChart) this.debtTrendChart.destroy();
+
+        this.debtTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+            labels: points.map(p => p.year),
+            datasets: [{
+                label: 'Outstanding Balance',
+                data: points.map(p => p.balance),
+                borderColor: '#dc3545',
+                backgroundColor: 'rgba(220,53,69,0.15)',
+                tension: 0.3,
+                fill: true
+            }]
+            },
+            options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+                y: {
+                ticks: { callback: (v) => '₦' + Number(v).toLocaleString() }
+                }
+            }
+            }
+        });
+        },
+
+        drawTopDebtorsChart(debtProfile) {
+        const ctx = document.getElementById('topDebtorsChart');
+        if (!ctx || !debtProfile || !debtProfile.topDebtors) return;
+
+        const top = debtProfile.topDebtors.slice(0, 10);
+        const labels = top.map(d => Utils.truncate(d.payee || '-', 18));
+        const values = top.map(d => Number(d.amount || 0));
+
+        if (this.topDebtorsChart) this.topDebtorsChart.destroy();
+
+        this.topDebtorsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+            labels,
+            datasets: [{
+                label: 'Amount Owed',
+                data: values,
+                backgroundColor: 'rgba(220,53,69,0.75)'
+            }]
+            },
+            options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+                x: {
+                ticks: { callback: (v) => '₦' + Number(v).toLocaleString() }
+                }
+            }
+            }
+        });
+        },
+
+        downloadChart(canvasId, filenameBase) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) {
+            Utils.showToast('Chart not found', 'warning');
+            return;
+        }
+
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `${filenameBase}_${this.currentYear}_${new Date().toISOString().slice(0,10)}.png`;
+        link.click();
+        },
+
     /**
      * Render year summary cards
      * Uses definitions from backend getSummary:
