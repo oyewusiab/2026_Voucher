@@ -262,6 +262,23 @@
                 </div>
             </div>
 
+            <!-- Category Pareto Chart -->
+                <div class="report-section">
+                <div class="card">
+                    <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-chart-bar"></i> Unpaid Balance Pareto (80/20)
+                    </h3>
+                    </div>
+                    <div class="card-body">
+                    <canvas id="categoryParetoChart" height="120"></canvas>
+                    <p class="text-muted" style="font-size:12px; margin-top:8px;">
+                        Shows categories ranked by unpaid balance with cumulative percentage line.
+                    </p>
+                    </div>
+                </div>
+                </div>
+
             <!-- Monthly Chart -->
             <div class="report-section">
                 <div class="card">
@@ -275,6 +292,22 @@
                     </div>
                 </div>
             </div>
+
+            <div class="report-section" id="agingSection">
+                <h2 class="report-section-title">
+                    <i class="fas fa-hourglass-half"></i> Unpaid Aging (2026)
+                </h2>
+
+                <div class="card">
+                    <div class="card-body">
+                    <canvas id="agingChart" height="120"></canvas>
+                    <div id="agingTable" style="margin-top: 15px;"></div>
+                    <p class="text-muted" style="font-size:12px; margin-top:8px;">
+                        Based on CREATED AT; computed client-side from 2026 vouchers only.
+                    </p>
+                    </div>
+                </div>
+                </div>
 
             <!-- All Years Summary (Debt Tracking) -->
             <div class="report-section">
@@ -369,6 +402,26 @@
                 </div>
             </div>
             </div>
+
+            <div class="report-section">
+                <div class="card">
+                    <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-bullseye"></i> Debt Concentration</h3>
+                    </div>
+                    <div class="card-body" style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items:center;">
+                    <div>
+                        <canvas id="debtConcentrationChart" height="170"></canvas>
+                    </div>
+                    <div>
+                        <div class="stat-card" id="debtConcentrationKPI">
+                        <div class="stat-label">Top 10 Share of Total Debt</div>
+                        <div class="stat-value">-</div>
+                        <div class="stat-subvalue text-muted">Higher means debt is concentrated among few payees</div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                </div>
 
     <!-- Scripts -->
 <script src="js/config.js"></script>

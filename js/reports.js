@@ -15,6 +15,9 @@ const Reports = {
     statusAmountChart: null,
     debtTrendChart: null,
     topDebtorsChart: null,
+    categoryParetoChart: null,
+    debtConcentrationChart: null,
+    agingChart: null,
     
     /**
      * Initialize reports page
@@ -97,13 +100,150 @@ const Reports = {
             this.renderCategoryTable(result.categoryBreakdown);
             this.renderMonthlyTable(result.monthlyBreakdown);
             this.drawCategoryChart(result.categoryBreakdown);
+            this.drawCategoryParetoChart(result.categoryBreakdown);
             this.drawMonthlyChart(result.monthlyBreakdown);
             this.drawStatusCharts(result.summary);
         } else {
             Utils.showToast(result.error || 'Failed to load summary', 'error');
         }
+
+        if (this.currentYear === '2026') {
+            await this.loadAgingAnalysis2026();
+            } else {
+            document.getElementById('agingSection')?.classList.add('hidden');
+            }
     },
     
+    parseDateFlexible(value) {
+        if (!value) return null;
+        if (value instanceof Date) return value;
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) return d;
+
+        // Handle "1/5/2026 20:20:22" style
+        const m = String(value).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!m) return null;
+
+        const a = parseInt(m[1], 10);
+        const b = parseInt(m[2], 10);
+        const yyyy = parseInt(m[3], 10);
+        const hh = parseInt(m[4], 10);
+        const mm = parseInt(m[5], 10);
+        const ss = parseInt(m[6] || '0', 10);
+
+        // Assume dd/mm unless forced
+        let day = a, month = b;
+        if (a <= 12 && b <= 12) { day = a; month = b; } // keep dd/mm
+        else if (a <= 12 && b > 12) { month = a; day = b; }
+
+        const out = new Date(yyyy, month - 1, day, hh, mm, ss);
+        return isNaN(out.getTime()) ? null : out;
+        },
+
+        async loadAgingAnalysis2026() {
+        const section = document.getElementById('agingSection');
+        section?.classList.remove('hidden');
+
+        // Pull UNPAID vouchers. If you have huge data, we can page through.
+        // This assumes your getVouchers supports pagination and returns totalPages.
+        const all = [];
+        let page = 1;
+        let totalPages = 1;
+
+        this.showLoading(true);
+        try {
+            do {
+            const res = await API.getVouchers('2026', { status: 'Unpaid' }, page, 200);
+            if (!res.success) break;
+
+            all.push(...(res.vouchers || []));
+            totalPages = res.totalPages || 1;
+            page++;
+            } while (page <= totalPages);
+
+            const now = new Date();
+            const buckets = [
+            { label: '0–7 days', min: 0, max: 7, count: 0, amount: 0 },
+            { label: '8–14 days', min: 8, max: 14, count: 0, amount: 0 },
+            { label: '15–30 days', min: 15, max: 30, count: 0, amount: 0 },
+            { label: '31–60 days', min: 31, max: 60, count: 0, amount: 0 },
+            { label: '61–90 days', min: 61, max: 90, count: 0, amount: 0 },
+            { label: '90+ days', min: 91, max: 99999, count: 0, amount: 0 },
+            ];
+
+            all.forEach(v => {
+            const created = this.parseDateFlexible(v.createdAt || v.date);
+            if (!created) return;
+
+            const ageDays = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+            const amt = Number(v.grossAmount || 0);
+
+            const b = buckets.find(x => ageDays >= x.min && ageDays <= x.max);
+            if (!b) return;
+            b.count += 1;
+            b.amount += amt;
+            });
+
+            // Draw chart
+            const ctx = document.getElementById('agingChart');
+            if (ctx) {
+            if (this.agingChart) this.agingChart.destroy();
+
+            this.agingChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                labels: buckets.map(b => b.label),
+                datasets: [{
+                    label: 'Total Amount (₦)',
+                    data: buckets.map(b => b.amount),
+                    backgroundColor: 'rgba(255,193,7,0.65)'
+                }]
+                },
+                options: {
+                responsive: true,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    y: { ticks: { callback: v => '₦' + Number(v).toLocaleString() } }
+                }
+                }
+            });
+            }
+
+            // Render table
+            const t = document.getElementById('agingTable');
+            if (t) {
+            t.innerHTML = `
+                <div class="table-container">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Bucket</th>
+                        <th class="text-center">Count</th>
+                        <th class="text-right">Total Amount</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    ${buckets.map(b => `
+                        <tr>
+                        <td><strong>${b.label}</strong></td>
+                        <td class="text-center">${Utils.formatNumber(b.count)}</td>
+                        <td class="text-right">${Utils.formatCurrency(b.amount)}</td>
+                        </tr>
+                    `).join('')}
+                    </tbody>
+                </table>
+                </div>
+            `;
+            }
+
+        } catch (e) {
+            console.error('Aging analysis error:', e);
+            Utils.showToast('Could not compute aging analysis', 'warning');
+        } finally {
+            this.showLoading(false);
+        }
+        },
+
     /**
      * Draw category bar chart
      */
@@ -154,6 +294,67 @@ const Reports = {
             }
         });
     },
+    
+    drawCategoryParetoChart(categories) {
+        const ctx = document.getElementById('categoryParetoChart');
+        if (!ctx || !categories || !categories.length) return;
+
+        // Sort by unpaid balance desc
+        const sorted = [...categories].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+
+        const labels = sorted.map(c => c.category);
+        const balances = sorted.map(c => Number(c.balance || 0));
+        const total = balances.reduce((s, v) => s + v, 0) || 1;
+
+        // Cumulative %
+        let running = 0;
+        const cumPct = balances.map(v => {
+            running += v;
+            return Number(((running / total) * 100).toFixed(2));
+        });
+
+        if (this.categoryParetoChart) this.categoryParetoChart.destroy();
+
+        this.categoryParetoChart = new Chart(ctx, {
+            data: {
+            labels,
+            datasets: [
+                {
+                type: 'bar',
+                label: 'Unpaid Balance',
+                data: balances,
+                backgroundColor: 'rgba(220, 53, 69, 0.65)',
+                yAxisID: 'y'
+                },
+                {
+                type: 'line',
+                label: 'Cumulative %',
+                data: cumPct,
+                borderColor: 'rgba(0, 123, 255, 1)',
+                backgroundColor: 'rgba(0, 123, 255, 0.15)',
+                tension: 0.25,
+                yAxisID: 'y1'
+                }
+            ]
+            },
+            options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                y: {
+                ticks: { callback: v => '₦' + Number(v).toLocaleString() }
+                },
+                y1: {
+                position: 'right',
+                min: 0,
+                max: 100,
+                grid: { drawOnChartArea: false },
+                ticks: { callback: v => v + '%' }
+                }
+            }
+            }
+        });
+        },
 
     /**
      * Draw monthly line chart
@@ -234,6 +435,7 @@ const Reports = {
         if (result.success) {
             this.debtProfile = result;
             this.renderDebtProfile(result);
+            this.drawDebtConcentration(result);
             this.drawTopDebtorsChart(result);
         } else {
             Utils.showToast(result.error || 'Failed to load debt profile', 'error');
@@ -371,6 +573,48 @@ const Reports = {
         link.download = `${filenameBase}_${this.currentYear}_${new Date().toISOString().slice(0,10)}.png`;
         link.click();
         },
+
+        drawDebtConcentration(data) {
+            const ctx = document.getElementById('debtConcentrationChart');
+            if (!ctx || !data) return;
+
+            const totalDebt = Number(data.totalDebt || 0);
+            const top10 = (data.topDebtors || []).slice(0, 10);
+            const top10Sum = top10.reduce((s, d) => s + Number(d.amount || 0), 0);
+            const others = Math.max(totalDebt - top10Sum, 0);
+
+            const pct = totalDebt > 0 ? ((top10Sum / totalDebt) * 100) : 0;
+
+            if (this.debtConcentrationChart) this.debtConcentrationChart.destroy();
+
+            this.debtConcentrationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                labels: ['Top 10 Payees', 'Others'],
+                datasets: [{
+                    data: [top10Sum, others],
+                    backgroundColor: ['rgba(220,53,69,0.8)', 'rgba(108,117,125,0.4)']
+                }]
+                },
+                options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                    callbacks: {
+                        label: (c) => `${c.label}: ₦${Number(c.raw || 0).toLocaleString()}`
+                    }
+                    }
+                }
+                }
+            });
+
+            // KPI box update
+            const kpi = document.getElementById('debtConcentrationKPI');
+            if (kpi) {
+                kpi.querySelector('.stat-value').textContent = `${pct.toFixed(1)}%`;
+            }
+            },
 
     /**
      * Render year summary cards
