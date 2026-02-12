@@ -328,6 +328,38 @@
   window.API = API;
 })();
 
+// ===== API Add-ons (safe) =====
+(function () {
+  const API = window.API;
+  if (!API) return;
+
+  // Password reset
+  if (!API.requestPasswordReset) {
+    API.requestPasswordReset = async function (identifier) {
+      return await this.post('requestPasswordReset', { identifier });
+    };
+  }
+
+  if (!API.resetPasswordWithOtp) {
+    API.resetPasswordWithOtp = async function (identifier, otp, newPassword) {
+      return await this.post('resetPasswordWithOtp', { identifier, otp, newPassword });
+    };
+  }
+
+  // Profile
+  if (!API.getMyProfile) {
+    API.getMyProfile = async function () {
+      return await this.get('getMyProfile');
+    };
+  }
+
+  if (!API.updateMyProfile) {
+    API.updateMyProfile = async function (profile) {
+      return await this.post('updateMyProfile', { profile });
+    };
+  }
+})();
+
 // ==================== UTILS (SAFE MERGE) ====================
 // This avoids breaking your existing pages if Utils is defined elsewhere.
 (function () {

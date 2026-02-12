@@ -26,24 +26,14 @@ const Reports = {
         const isAuth = await Auth.requireAuth();
         if (!isAuth) return;
 
-        // ---- ACCESS CONTROL (Payable Unit cannot access Reports) ----
         const user = Auth.getUser();
-        const isPayableUnit = user && [
-            CONFIG.ROLES.PAYABLE_STAFF,
-            CONFIG.ROLES.PAYABLE_HEAD
-        ].includes(user.role);
+        const isPayableStaff = user && (user.role === CONFIG.ROLES.PAYABLE_STAFF);
 
-        if (isPayableUnit) {
-            // Do not load reports UI at all
-            if (window.Utils && typeof Utils.showToast === 'function') {
-                Utils.showToast('Access denied: Reports is not available for Payable Unit users.', 'error');
-            } else {
-                alert('Access denied: Reports is not available for Payable Unit users.');
-            }
-            window.location.replace('dashboard.html'); // replace prevents back-navigation to reports
+        if (isPayableStaff) {
+            Utils.showToast('Access denied: Reports is not available for Payable Unit Staff.', 'error');
+            window.location.replace('dashboard.html');
             return;
         }
-        // ------------------------------------------------------------
 
         this.setupSidebar();
         this.setupEventListeners();
