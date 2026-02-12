@@ -13,6 +13,10 @@ const Components = {
         if (!user) return '';
 
         const isActive = (page) => (activePage === page ? 'active' : '');
+        const isPayableUnit = [
+            CONFIG.ROLES.PAYABLE_STAFF,
+            CONFIG.ROLES.PAYABLE_HEAD
+            ].includes(user.role);
 
         // Base navigation
         let navItems = `
@@ -22,9 +26,11 @@ const Components = {
             <a href="vouchers.html" class="nav-item ${isActive('vouchers')}">
             <i class="fas fa-file-invoice-dollar"></i> Vouchers
             </a>
+            ${!isPayableUnit ? `
             <a href="reports.html" class="nav-item ${isActive('reports')}">
-            <i class="fas fa-chart-bar"></i> Reports
+                <i class="fas fa-chart-bar"></i> Reports
             </a>
+            ` : ''}
             <a href="notifications.html" class="nav-item ${isActive('notifications')}" id="notificationBell">
             <i class="fas fa-bell"></i> Notifications
             <span class="nav-badge" id="notificationBadge" style="display:none;">0</span>
@@ -53,7 +59,7 @@ const Components = {
             <div class="sidebar-header">
             <img src="images/fmc-logo.png" alt="FMC Logo" class="sidebar-logo"
                 onerror="this.src='https://via.placeholder.com/60?text=FMC'">
-            <h2 class="sidebar-title">PAYABLE VOUCHER</h2>
+            <h2 class="sidebar-title">PAYABLE VOUCHERS</h2>
             <p class="sidebar-subtitle">FMC Abeokuta • Finance Dept</p>
             </div>
 
