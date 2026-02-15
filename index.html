@@ -4,177 +4,208 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - PAYABLE VOUCHER 2026</title>
+
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body{
+            margin:0;
+            background:#14532d;
+            font-family:inherit;
+        }
+
+        .login-wrapper{
+            display:flex;
+            min-height:100vh;
+        }
+
+        .login-left{
+            width:380px;
+            background:#f4f4f4;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            align-items:center;
+            text-align:center;
+            padding:30px;
+        }
+
+        .login-right{
+            flex:1;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:20px;
+        }
+
+        .login-box{
+            width:100%;
+            max-width:420px;
+            background:white;
+            padding:30px;
+            border-radius:10px;
+            box-shadow:0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .login-links{
+            display:flex;
+            justify-content:space-between;
+            margin-top:15px;
+            font-size:14px;
+        }
+
+        @media(max-width:768px){
+            .login-left{display:none;}
+        }
+    </style>
 </head>
+
 <body>
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay hidden">
-        <div class="spinner"></div>
-        <p class="loading-text">Authenticating...</p>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+    <p class="loading-text">Authenticating...</p>
+</div>
+
+<div class="login-wrapper">
+
+    <!-- LEFT PANEL -->
+    <div class="login-left">
+        <img src="images/fmc-logo.png" class="login-logo"
+             onerror="this.src='https://via.placeholder.com/100?text=FMC'">
+
+        <h2>PAYABLE VOUCHER 2026</h2>
+        <p>Federal Medical Centre, Abeokuta<br>Finance & Accounts Department</p>
     </div>
 
-    <!-- Login Container -->
-    <div class="login-container">
-        <div class="login-box">
-            <!-- Logo -->
-            <img src="images/fmc-logo.png" alt="FMC Logo" class="login-logo" 
-                 onerror="this.src='https://via.placeholder.com/100?text=FMC'">
-            
-            <!-- Title -->
-            <h1 class="login-title">PAYABLE VOUCHER 2026</h1>
-            <p class="login-subtitle">Federal Medical Centre, Abeokuta<br>Finance & Accounts Department</p>
-            
-            <!-- Error Alert -->
+    <!-- RIGHT PANEL -->
+    <div class="login-right">
+
+        <form id="loginForm" class="login-box">
+
+            <h3 style="text-align:center; margin-bottom:20px;">Sign In</h3>
+
             <div id="loginError" class="alert alert-error hidden"></div>
-            
-            <!-- Login Form -->
+
             <div class="form-group">
                 <label for="email">
                     <i class="fas fa-user"></i> Email Address or Username
                 </label>
-                <input 
-                    type="text"
-                    id="email"
-                    name="email"
-                    placeholder="Enter your email or username"
-                    autocomplete="username"
-                    required
-                >
-                </div>
-                    >
-                </div>
-                
-                <div class="form-group">
-                    <label for="password">
-                        <i class="fas fa-lock"></i> Password
-                    </label>
-                    <input 
-                        type="password" 
-                        id="password" 
-                        name="password" 
-                        placeholder="Enter your password"
-                        autocomplete="current-password"
-                        required
-                    >
-                </div>
-                
-                <button type="submit" id="loginBtn" class="btn btn-primary">
-                    <i class="fas fa-sign-in-alt"></i> Sign In
-                </button>
-            </form>
+                <input type="text" id="email" name="email"
+                       placeholder="Enter your email or username"
+                       autocomplete="username" required>
             </div>
-            <div style="display:flex; justify-content:space-between; margin-top:10px;">
+
+            <div class="form-group">
+                <label for="password">
+                    <i class="fas fa-lock"></i> Password
+                </label>
+                <input type="password" id="password" name="password"
+                       placeholder="Enter your password"
+                       autocomplete="current-password" required>
+            </div>
+
+            <button type="submit" id="loginBtn" class="btn btn-primary" style="width:100%;">
+                <i class="fas fa-sign-in-alt"></i> Sign In
+            </button>
+
+            <div class="login-links">
                 <a href="#" id="signupLink">Sign up</a>
                 <a href="forgot-password.html">Forgot Password?</a>
             </div>
+
+        </form>
+
     </div>
 
-    <div style="display:flex; justify-content:space-between; margin-top:10px;">
-    <a href="#" id="signupLink">Sign up</a>
-    <a href="forgot-password.html">Forgot Password?</a>
-    </div>
+</div>
 
-    <!-- Scripts -->
-    <script src="js/config.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/activity-tracker.js"></script>
-    <script>
-        // DOM Elements
-        const loginForm = document.getElementById('loginForm');
-        const loginError = document.getElementById('loginError');
-        const loginBtn = document.getElementById('loginBtn');
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
+<!-- Scripts -->
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/activity-tracker.js"></script>
 
-        // Check if already logged in
-        document.addEventListener('DOMContentLoaded', async () => {
-            if (Auth.isLoggedIn()) {
-                showLoading(true);
-                const validation = await Auth.validateSession();
-                if (validation.success) {
-                    window.location.href = 'dashboard.html';
-                    return;
-                }
-                showLoading(false);
-            }
-            
-            // Focus on email input
-            emailInput.focus();
-        });
+<script>
+const loginForm = document.getElementById('loginForm');
+const loginError = document.getElementById('loginError');
+const loginBtn = document.getElementById('loginBtn');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
 
-        // Handle form submission
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            // Get values
-            const email = emailInput.value.trim();
-            const password = passwordInput.value;
-            
-            // Validate
-            if (!email || !password) {
-                showError('Please enter both email and password');
-                return;
-            }
-            
-            // Show loading
-            showLoading(true);
-            hideError();
-            loginBtn.disabled = true;
-            
-            try {
-                // Attempt login
-                const result = await Auth.login(email, password);
-                
-                if (result.success) {
-                    // Redirect to dashboard
-                    window.location.href = 'dashboard.html';
-                } else {
-                    showError(result.error || 'Login failed. Please try again.');
-                    showLoading(false);
-                    loginBtn.disabled = false;
-                    passwordInput.value = '';
-                    passwordInput.focus();
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                showError('An error occurred. Please try again.');
-                showLoading(false);
-                loginBtn.disabled = false;
-            }
-        });
-
-        // Show/hide loading overlay
-        function showLoading(show) {
-            if (show) {
-                loadingOverlay.classList.remove('hidden');
-            } else {
-                loadingOverlay.classList.add('hidden');
-            }
+document.addEventListener('DOMContentLoaded', async () => {
+    if (Auth.isLoggedIn()) {
+        showLoading(true);
+        const validation = await Auth.validateSession();
+        if (validation.success) {
+            window.location.href = 'dashboard.html';
+            return;
         }
+        showLoading(false);
+    }
+    emailInput.focus();
+});
 
-        // Show error message
-        function showError(message) {
-            loginError.textContent = message;
-            loginError.classList.remove('hidden');
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+
+    if (!email || !password) {
+        showError('Please enter both email and password');
+        return;
+    }
+
+    showLoading(true);
+    hideError();
+    loginBtn.disabled = true;
+
+    try {
+        const result = await Auth.login(email, password);
+
+        if (result.success) {
+            window.location.href = 'dashboard.html';
+        } else {
+            showError(result.error || 'Login failed. Please try again.');
+            showLoading(false);
+            loginBtn.disabled = false;
+            passwordInput.value = '';
+            passwordInput.focus();
         }
+    } catch (error) {
+        console.error('Login error:', error);
+        showError('An error occurred. Please try again.');
+        showLoading(false);
+        loginBtn.disabled = false;
+    }
+});
 
-        // Hide error message
-        function hideError() {
-            loginError.classList.add('hidden');
-        }
+function showLoading(show){
+    loadingOverlay.classList.toggle('hidden', !show);
+}
 
-        // Clear error on input
-        emailInput.addEventListener('input', hideError);
-        passwordInput.addEventListener('input', hideError);
+function showError(message){
+    loginError.textContent = message;
+    loginError.classList.remove('hidden');
+}
 
-        document.getElementById('signupLink')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            Utils.showToast('Sign up is not available. Please contact the Admin to create your account.', 'info');
-            });
-    </script>
-    
-    <script src="js/footer.js"></script>
+function hideError(){
+    loginError.classList.add('hidden');
+}
+
+emailInput.addEventListener('input', hideError);
+passwordInput.addEventListener('input', hideError);
+
+document.getElementById('signupLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    Utils.showToast('Sign up is not available. Please contact the Admin to create your account.', 'info');
+});
+</script>
+
+<script src="js/footer.js"></script>
+
 </body>
 </html>

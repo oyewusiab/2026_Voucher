@@ -205,3 +205,69 @@
     grid-column: span 1;
   }
 }
+
+.login-wrapper{
+  display:flex;
+  min-height:100vh;
+}
+
+/* LEFT PANEL */
+.login-info{
+  width:380px;
+  background:#f5f5f5;
+  padding:40px 25px;
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+
+.login-logo{
+  width:90px;
+  margin:0 auto 15px;
+}
+
+/* RIGHT PANEL */
+.login-form-area{
+  flex:1;
+  background:#14532d;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+/* FORM CARD */
+.login-card{
+  width:100%;
+  max-width:420px;
+  background:white;
+  padding:30px;
+  border-radius:10px;
+  box-shadow:0 10px 25px rgba(0,0,0,0.15);
+}
+
+.login-card h3{
+  text-align:center;
+  margin-bottom:20px;
+}
+
+.btn-block{
+  width:100%;
+  margin-top:10px;
+}
+
+/* LINKS */
+.login-links{
+  display:flex;
+  justify-content:space-between;
+  margin-top:15px;
+  font-size:14px;
+}
+
+/* MOBILE */
+@media(max-width:768px){
+  .login-info{
+    display:none;
+  }
+}

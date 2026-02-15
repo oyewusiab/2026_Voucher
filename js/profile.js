@@ -42,9 +42,10 @@ const Profile = {
   bind() {
     document.getElementById('saveProfileBtn')?.addEventListener('click', async () => {
       const profile = {
-        phone: document.getElementById('pPhone').value,
-        department: document.getElementById('pDepartment').value
-      };
+        phone: document.getElementById('pPhone').value.trim(),
+        department: document.getElementById('pDepartment').value.trim()
+        };
+
 
       const res = await API.updateMyProfile(profile);
       if (res.success) Utils.showToast(res.message || 'Profile updated', 'success');
