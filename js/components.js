@@ -68,7 +68,12 @@ const Components = {
             </nav>
 
             <div class="sidebar-footer">
-            <div class="user-info">
+            <div class="user-info"
+                style="cursor:pointer;"
+                role="button"
+                tabindex="0"
+                onclick="window.location.href='profile.html'"
+                onkeydown="if(event.key==='Enter'){window.location.href='profile.html'}">
                 <div class="user-avatar" id="userAvatar">${Utils.getInitials(user.name)}</div>
                 <div class="user-details">
                 <div class="user-name" id="userName">${user.name}</div>

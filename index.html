@@ -29,18 +29,19 @@
             <div id="loginError" class="alert alert-error hidden"></div>
             
             <!-- Login Form -->
-            <form id="loginForm" class="login-form">
-                <div class="form-group">
-                    <label for="email">
-                        <i class="fas fa-envelope"></i> Email Address
-                    </label>
-                    <input 
-                        type="email" 
-                        id="email" 
-                        name="email" 
-                        placeholder="Enter your email"
-                        autocomplete="email"
-                        required
+            <div class="form-group">
+                <label for="email">
+                    <i class="fas fa-user"></i> Email Address or Username
+                </label>
+                <input 
+                    type="text"
+                    id="email"
+                    name="email"
+                    placeholder="Enter your email or username"
+                    autocomplete="username"
+                    required
+                >
+                </div>
                     >
                 </div>
                 
@@ -63,6 +64,15 @@
                 </button>
             </form>
             </div>
+            <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                <a href="#" id="signupLink">Sign up</a>
+                <a href="forgot-password.html">Forgot Password?</a>
+            </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; margin-top:10px;">
+    <a href="#" id="signupLink">Sign up</a>
+    <a href="forgot-password.html">Forgot Password?</a>
     </div>
 
     <!-- Scripts -->
@@ -158,7 +168,13 @@
         // Clear error on input
         emailInput.addEventListener('input', hideError);
         passwordInput.addEventListener('input', hideError);
+
+        document.getElementById('signupLink')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            Utils.showToast('Sign up is not available. Please contact the Admin to create your account.', 'info');
+            });
     </script>
+    
     <script src="js/footer.js"></script>
 </body>
 </html>
