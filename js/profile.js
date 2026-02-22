@@ -44,7 +44,7 @@ const Profile = {
       const profile = {
         phone: document.getElementById('pPhone').value.trim(),
         department: document.getElementById('pDepartment').value.trim()
-        };
+      };
 
 
       const res = await API.updateMyProfile(profile);
@@ -61,7 +61,7 @@ const Profile = {
       if (newPassword.length < 6) return Utils.showToast('Password must be at least 6 characters', 'warning');
       if (newPassword !== confirm) return Utils.showToast('Passwords do not match', 'error');
 
-      const res = await API.changePassword(oldPassword, newPassword);
+      const res = await Auth.changePassword(oldPassword, newPassword);
       if (res.success) {
         Utils.showToast(res.message || 'Password changed', 'success');
         document.getElementById('oldPassword').value = '';

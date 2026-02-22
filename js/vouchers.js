@@ -1,9 +1,25 @@
 /**
- * PAYABLE VOUCHER 2026 - Vouchers Module (CLEAN)
- * - No duplicate functions
- * - Deletion workflow uses modals (reason required)
- * - Enhanced release workflow (2 steps + auto CN + CPO purpose)
+ * PAYABLE VOUCHER 2026 - 
  */
+//
+if (typeof Utils !== 'undefined' && !Utils.formatNumber) {
+  Utils.formatNumber = function (num) {
+    return new Intl.NumberFormat('en-NG', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(num || 0);
+  };
+}
+
+// At the VERY TOP of vouchers.js
+if (typeof Utils !== 'undefined' && !Utils.formatNumber) {
+  Utils.formatNumber = function (num) {
+    return new Intl.NumberFormat('en-NG', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(num || 0);
+  };
+}
 
 const Vouchers = {
   // ===== State =====
@@ -23,13 +39,13 @@ const Vouchers = {
   isEditMode: false,
 
   filters: {
-  status: 'All',
-  category: 'All',
-  searchTerm: '',
-  amountMin: '',
-  amountMax: '',
-  release: 'All'
-},
+    status: 'All',
+    category: 'All',
+    searchTerm: '',
+    amountMin: '',
+    amountMax: '',
+    release: 'All'
+  },
 
   // Global Search
   isGlobalSearchMode: false,
@@ -67,6 +83,7 @@ const Vouchers = {
 
     this.setupEventListeners();
     this.handleUrlParams();
+    this.setupUppercaseInputs();
   },
 
   setupUI() {
@@ -115,6 +132,34 @@ const Vouchers = {
         this.loadVouchers();
       }
     }
+  },
+
+  // Auto-convert inputs to UPPERCASE
+  setupUppercaseInputs() {
+    // List of input IDs to convert to uppercase
+    const uppercaseFields = [
+      'formOldVoucherNumber',
+      'formPayee',
+      'formAccountOrMail',
+      'formParticular'
+    ];
+
+    uppercaseFields.forEach(fieldId => {
+      const field = document.getElementById(fieldId);
+      if (field) {
+        field.addEventListener('input', function () {
+          // Get cursor position
+          const start = this.selectionStart;
+          const end = this.selectionEnd;
+
+          // Convert to uppercase
+          this.value = this.value.toUpperCase();
+
+          // Restore cursor position
+          this.setSelectionRange(start, end);
+        });
+      }
+    });
   },
 
   // ===== Categories =====
@@ -230,11 +275,10 @@ const Vouchers = {
       const sn = startSN + idx + 1;
       html += `
         <tr data-row="${v.rowIndex}">
-          ${
-            canSelect
-              ? `<td><input type="checkbox" class="voucher-checkbox" value="${v.rowIndex}" onchange="Vouchers.updateSelection()"></td>`
-              : ''
-          }
+          ${canSelect
+          ? `<td><input type="checkbox" class="voucher-checkbox" value="${v.rowIndex}" onchange="Vouchers.updateSelection()"></td>`
+          : ''
+        }
           <td>${sn}</td>
           <td><strong>${v.accountOrMail || '-'}</strong></td>
           <td title="${v.payee || ''}">${Utils.truncate(v.payee || '-', 20)}</td>
@@ -408,7 +452,7 @@ const Vouchers = {
 
     this.filters.amountMin = document.getElementById('amountMinFilter')?.value || '';
     this.filters.amountMax = document.getElementById('amountMaxFilter')?.value || '';
-    this.filters.release   = document.getElementById('releaseFilter')?.value || 'All';
+    this.filters.release = document.getElementById('releaseFilter')?.value || 'All';
 
     this.currentPage = 1;
 
@@ -430,19 +474,34 @@ const Vouchers = {
     document.getElementById('amountMaxFilter') && (document.getElementById('amountMaxFilter').value = '');
     document.getElementById('releaseFilter') && (document.getElementById('releaseFilter').value = 'All');
 
-    this.filters = { status:'All', category:'All', searchTerm:'', amountMin:'', amountMax:'', release:'All' };
+    this.filters = { status: 'All', category: 'All', searchTerm: '', amountMin: '', amountMax: '', release: 'All' };
 
     this.isGlobalSearchMode = false;
     this.currentPage = 1;
     this.loadVouchers();
   },
 
-    // ===== View voucher (with payee unpaid total) =====
+  // ===== View voucher (with payee unpaid total) =====
   async viewVoucher(rowIndex) {
-    const voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
-    if (!voucher) {
-      Utils.showToast('Voucher not found', 'error');
-      return;
+    let voucher;
+
+    // If global search mode, fetch from 2026
+    if (this.isGlobalSearchMode) {
+      this.showLoading(true);
+      const r = await this.get2026VoucherForAction(rowIndex);
+      this.showLoading(false);
+      if (!r.success) {
+        Utils.showToast(r.error || 'Voucher not found', 'error');
+        return;
+      }
+      voucher = r.voucher;
+    } else {
+      // Normal mode
+      voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+      if (!voucher) {
+        Utils.showToast('Voucher not found', 'error');
+        return;
+      }
     }
 
     this.selectedVoucher = voucher;
@@ -475,48 +534,126 @@ const Vouchers = {
 
     content.innerHTML = `
       <div class="voucher-details">
-        <div class="detail-row">
-          <div class="detail-group"><label>Status</label><div>${Utils.getStatusBadge(voucher.status)}</div></div>
-          <div class="detail-group"><label>Payment Month</label><div>${voucher.pmtMonth || '-'}</div></div>
+        <!-- Header -->
+        <div class="voucher-header-print">
+          <h2>PAYMENT VOUCHER</h2>
+          <div class="voucher-number">${voucher.accountOrMail || '-'}</div>
+          <div class="voucher-date">Date: ${Utils.formatDate(voucher.date)}</div>
         </div>
 
-        <div class="detail-row">
-          <div class="detail-group"><label>Voucher Number</label><div><strong>${voucher.accountOrMail || '-'}</strong></div></div>
-          <div class="detail-group"><label>Control Number</label><div>${voucher.controlNumber || '-'}</div></div>
+        <!-- Status Section -->
+        <div class="detail-section">
+          <div class="detail-section-title">Status Information</div>
+          <div class="detail-row">
+            <div class="detail-group">
+              <label>Current Status</label>
+              <div>${Utils.getStatusBadge(voucher.status)}</div>
+            </div>
+            <div class="detail-group">
+              <label>Payment Month</label>
+              <div>${voucher.pmtMonth || '-'}</div>
+            </div>
+            <div class="detail-group">
+              <label>Control Number</label>
+              <div>${voucher.controlNumber || '<span class="text-muted">Not Released</span>'}</div>
+            </div>
+          </div>
         </div>
 
-        <div class="detail-group full-width"><label>Payee</label><div><strong>${voucher.payee || '-'}</strong></div></div>
-        <div class="detail-group full-width"><label>Particular</label><div>${voucher.particular || '-'}</div></div>
-
-        <div class="detail-row">
-          <div class="detail-group"><label>Contract Sum</label><div>${Utils.formatCurrency(voucher.contractSum || 0)}</div></div>
-          <div class="detail-group"><label>Gross Amount</label><div class="total-amount">${Utils.formatCurrency(voucher.grossAmount || 0)}</div></div>
+        <!-- Payee Section -->
+        <div class="detail-section">
+          <div class="detail-section-title">Payee Information</div>
+          <div class="detail-group full-width">
+            <label>Payee Name</label>
+            <div><strong>${voucher.payee || '-'}</strong></div>
+          </div>
+          <div class="detail-group full-width" style="margin-top: 12px;">
+            <label>Particular / Description</label>
+            <div>${voucher.particular || '-'}</div>
+          </div>
         </div>
 
-        <div class="detail-row">
-          <div class="detail-group"><label>NET</label><div>${Utils.formatCurrency(voucher.net || 0)}</div></div>
-          <div class="detail-group"><label>VAT</label><div>${Utils.formatCurrency(voucher.vat || 0)}</div></div>
+        <!-- Financial Section -->
+        <div class="detail-section">
+          <div class="detail-section-title">Financial Details</div>
+          ${voucher.contractSum ? `
+            <div class="detail-group full-width" style="margin-bottom: 15px;">
+              <label>Contract Sum</label>
+              <div><strong>${Utils.formatCurrency(voucher.contractSum)}</strong></div>
+            </div>
+          ` : ''}
+          
+          <table class="financial-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th class="amount">Amount (₦)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Gross Amount</td>
+                <td class="amount">${Utils.formatCurrency(voucher.grossAmount || 0)}</td>
+              </tr>
+              <tr>
+                <td>Less: VAT</td>
+                <td class="amount">(${Utils.formatCurrency(voucher.vat || 0)})</td>
+              </tr>
+              <tr>
+                <td>Less: WHT</td>
+                <td class="amount">(${Utils.formatCurrency(voucher.wht || 0)})</td>
+              </tr>
+              <tr>
+                <td>Less: Stamp Duty</td>
+                <td class="amount">(${Utils.formatCurrency(voucher.stampDuty || 0)})</td>
+              </tr>
+              <tr class="net-row">
+                <td><strong>NET Amount Payable</strong></td>
+                <td class="amount"><strong>${Utils.formatCurrency(voucher.net || 0)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <div class="detail-row">
-          <div class="detail-group"><label>WHT</label><div>${Utils.formatCurrency(voucher.wht || 0)}</div></div>
-          <div class="detail-group"><label>Stamp Duty</label><div>${Utils.formatCurrency(voucher.stampDuty || 0)}</div></div>
+        <!-- Classification Section -->
+        <div class="detail-section">
+          <div class="detail-section-title">Classification</div>
+          <div class="detail-row">
+            <div class="detail-group">
+              <label>Category</label>
+              <div>${voucher.categories || '-'}</div>
+            </div>
+            <div class="detail-group">
+              <label>Account Type</label>
+              <div>${voucher.accountType || '-'}</div>
+            </div>
+            <div class="detail-group">
+              <label>Old Voucher No.</label>
+              <div>${voucher.oldVoucherNumber || '-'}</div>
+            </div>
+          </div>
         </div>
 
-        <div class="detail-row">
-          <div class="detail-group"><label>Category</label><div>${voucher.categories || '-'}</div></div>
-          <div class="detail-group"><label>Account Type</label><div>${voucher.accountType || '-'}</div></div>
+        <!-- Attachment Section -->
+        ${voucher.attachmentUrl ? `
+        <div class="detail-section">
+          <div class="detail-section-title">Supporting Documents</div>
+          <div class="detail-group full-width">
+            <a href="${voucher.attachmentUrl}" target="_blank" class="btn btn-sm btn-secondary">
+              <i class="fas fa-paperclip"></i> View Attachment
+            </a>
+          </div>
         </div>
+        ` : ''}
 
-        <div class="detail-row">
-          <div class="detail-group"><label>Date</label><div>${Utils.formatDate(voucher.date)}</div></div>
-          <div class="detail-group"><label>Old Voucher No.</label><div>${voucher.oldVoucherNumber || '-'}</div></div>
-        </div>
-
-        <div class="detail-group full-width" style="background: #fff3cd; padding: 15px; border-radius: var(--radius); margin-top: 15px;">
-          <label style="color: #856404;"><i class="fas fa-exclamation-triangle"></i> Total Unpaid for "${voucher.payee || ''}"</label>
-          <div style="font-size: 22px; font-weight: 700; color: #856404;">${Utils.formatCurrency(totalUnpaidForPayee)}</div>
-          <div style="font-size: 12px; color: #856404;">${unpaidCount} unpaid voucher(s) (limited lookup)</div>
+        <!-- Payee Unpaid Total -->
+        <div class="payee-unpaid-warning">
+          <div class="warning-title">
+            <i class="fas fa-exclamation-triangle"></i>
+            Total Unpaid for "${voucher.payee || ''}"
+          </div>
+          <div class="warning-amount">${Utils.formatCurrency(totalUnpaidForPayee)}</div>
+          <div class="warning-note">${unpaidCount} unpaid voucher(s) found</div>
         </div>
       </div>
     `;
@@ -537,6 +674,30 @@ const Vouchers = {
     title.textContent = this.isEditMode ? 'Edit Voucher' : 'Create New Voucher';
     form.reset();
 
+    // Reset payment type to Lump Sum
+    const lumpSumRadio = document.getElementById('paymentLumpSum');
+    if (lumpSumRadio) lumpSumRadio.checked = true;
+
+    // Hide other part-payment group
+    const otherPartGroup = document.getElementById('otherPartPaymentGroup');
+    if (otherPartGroup) otherPartGroup.classList.add('hidden');
+
+    // Reset contract sum requirement
+    const contractSumGroup = document.getElementById('contractSumGroup');
+    const contractSumRequired = document.getElementById('contractSumRequired');
+    if (contractSumGroup) contractSumGroup.classList.remove('required-field');
+    if (contractSumRequired) contractSumRequired.style.display = 'none';
+
+    // Reset hints
+    this.updateParticularHint('lumpsum');
+
+    // Reset attachment
+    const attachmentInput = document.getElementById('formAttachment');
+    if (attachmentInput) attachmentInput.value = '';
+    document.getElementById('attachmentProgress').classList.add('hidden');
+    document.getElementById('attachmentStatus').classList.add('hidden');
+    document.getElementById('formAttachmentUrl').value = '';
+
     this.populateCategoryDropdowns();
 
     if (voucher) {
@@ -547,20 +708,61 @@ const Vouchers = {
       document.getElementById('formContractSum').value = voucher.contractSum || '';
       document.getElementById('formGrossAmount').value = voucher.grossAmount || '';
       document.getElementById('formNet').value = voucher.net || '';
+      document.getElementById('formNetDisplay').textContent = Utils.formatNumber(voucher.net || 0);
       document.getElementById('formVat').value = voucher.vat || '';
       document.getElementById('formWht').value = voucher.wht || '';
       document.getElementById('formStampDuty').value = voucher.stampDuty || '';
       document.getElementById('formCategories').value = voucher.categories || '';
       document.getElementById('formAccountType').value = voucher.accountType || '';
       document.getElementById('formDate').value = voucher.date || '';
+      document.getElementById('formAttachmentUrl').value = voucher.attachmentUrl || '';
+      if (voucher.attachmentUrl) {
+        document.getElementById('attachmentStatus').classList.remove('hidden');
+      }
+
+      // Detect payment type from particular
+      this.detectPaymentType(voucher.particular || '');
     } else {
       document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
+      document.getElementById('formNetDisplay').textContent = '0.00';
     }
+
+    // Setup payment type handlers
+    this.setupPaymentTypeHandlers();
 
     modal.classList.add('active');
   },
 
+  detectPaymentType(particular) {
+    const lower = particular.toLowerCase();
+
+    if (/^(first|1st)\s*part[-\s]?p(ay)?m(en)?t/i.test(lower)) {
+      document.getElementById('paymentFirstPart').checked = true;
+      this.updateParticularHint('firstPart');
+    } else if (/^(bal(ance)?|final|fnl)\s*p(ay)?m(en)?t/i.test(lower)) {
+      document.getElementById('paymentBalance').checked = true;
+      this.updateParticularHint('balance');
+    } else if (/^(2nd|second|3rd|third|4th|fourth|5th|fifth)\s*part[-\s]?p(ay)?m(en)?t/i.test(lower)) {
+      document.getElementById('paymentOtherPart').checked = true;
+      document.getElementById('otherPartPaymentGroup').classList.remove('hidden');
+      this.updateParticularHint('otherPart');
+    }
+  },
+
   async editVoucher(rowIndex) {
+    // If global search mode, fetch from 2026 to avoid wrong-year match
+    if (this.isGlobalSearchMode) {
+      this.showLoading(true);
+      const r = await this.get2026VoucherForAction(rowIndex);
+      this.showLoading(false);
+      if (!r.success) {
+        Utils.showToast(r.error || 'Voucher not found', 'error');
+        return;
+      }
+      return this.openVoucherForm(r.voucher);
+    }
+
+    // Normal mode - existing logic
     let voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
 
     if (!voucher) {
@@ -578,6 +780,22 @@ const Vouchers = {
   },
 
   async saveVoucher() {
+    // Validate payment type and particular
+    const particularValidation = this.validateParticular();
+    if (!particularValidation.valid) {
+      Utils.showToast(particularValidation.error, 'error');
+      return;
+    }
+
+    // Validate contract sum for first part-payment
+    const paymentType = document.querySelector('input[name="paymentType"]:checked')?.value;
+    const contractSum = parseFloat(document.getElementById('formContractSum').value) || 0;
+
+    if (paymentType === 'firstPart' && !contractSum) {
+      Utils.showToast('Contract Sum is required for First Part-Payment', 'error');
+      return;
+    }
+
     const payee = document.getElementById('formPayee').value.trim();
     const accountOrMail = document.getElementById('formAccountOrMail').value.trim();
 
@@ -593,6 +811,43 @@ const Vouchers = {
     if (!accountOrMail) return Utils.showToast('Voucher Number is required', 'error');
     if (!gross) return Utils.showToast('Gross amount is required', 'error');
 
+    this.showLoading(true);
+
+    // Handle File Upload to Firebase Storage
+    let attachmentUrl = document.getElementById('formAttachmentUrl').value;
+    const file = document.getElementById('formAttachment').files[0];
+
+    if (file) {
+      try {
+        const storageRef = FB_STORAGE.ref();
+        const fileRef = storageRef.child(`vouchers/${Date.now()}_${file.name}`);
+
+        // Show progress
+        const progContainer = document.getElementById('attachmentProgress');
+        const progBar = document.getElementById('attachmentProgressBar');
+        progContainer.classList.remove('hidden');
+
+        const uploadTask = fileRef.put(file);
+
+        await new Promise((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              progBar.style.width = progress + '%';
+            },
+            (error) => reject(error),
+            () => resolve()
+          );
+        });
+
+        attachmentUrl = await uploadTask.snapshot.ref.getDownloadURL();
+      } catch (error) {
+        console.error("Upload error:", error);
+        this.showLoading(false);
+        return Utils.showToast('Failed to upload attachment: ' + error.message, 'error');
+      }
+    }
+
     const voucherData = {
       payee,
       accountOrMail,
@@ -603,11 +858,12 @@ const Vouchers = {
       wht,
       stampDuty,
       net,
-      totalGross: gross,
       categories: document.getElementById('formCategories').value,
-      oldVoucherNumber: document.getElementById('formOldVoucherNumber').value.trim(),
+      accountType: document.getElementById('formAccountType').value,
       date: document.getElementById('formDate').value,
-      accountType: document.getElementById('formAccountType').value
+      attachmentUrl: attachmentUrl,
+      totalGross: gross,
+      oldVoucherNumber: document.getElementById('formOldVoucherNumber').value.trim()
     };
 
     this.showLoading(true);
@@ -796,24 +1052,42 @@ const Vouchers = {
   },
 
   // ===== Status =====
-  openStatusModal(rowIndex) {
-  const voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
-  if (!voucher) return Utils.showToast('Voucher not found', 'error');
+  async openStatusModal(rowIndex) {
+    let voucher;
 
-  this.selectedVoucher = voucher;
+    // If global search mode, fetch from 2026
+    if (this.isGlobalSearchMode) {
+      this.showLoading(true);
+      const r = await this.get2026VoucherForAction(rowIndex);
+      this.showLoading(false);
+      if (!r.success) {
+        Utils.showToast(r.error || 'Voucher not found', 'error');
+        return;
+      }
+      voucher = r.voucher;
+    } else {
+      // Normal mode
+      voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+      if (!voucher) {
+        Utils.showToast('Voucher not found', 'error');
+        return;
+      }
+    }
 
-  document.getElementById('statusVoucherInfo').innerHTML = `
-    <p><strong>Voucher:</strong> ${voucher.accountOrMail || '-'}</p>
-    <p><strong>Payee:</strong> ${voucher.payee || '-'}</p>
-    <p><strong>Amount:</strong> ${Utils.formatCurrency(voucher.grossAmount || 0)}</p>
-  `;
+    this.selectedVoucher = voucher;
 
-  const user = Auth.getUser();
-  const canSetMonth = user && (user.role === CONFIG.ROLES.CPO || user.role === CONFIG.ROLES.ADMIN);
+    document.getElementById('statusVoucherInfo').innerHTML = `
+      <p><strong>Voucher:</strong> ${voucher.accountOrMail || '-'}</p>
+      <p><strong>Payee:</strong> ${voucher.payee || '-'}</p>
+      <p><strong>Amount:</strong> ${Utils.formatCurrency(voucher.grossAmount || 0)}</p>
+    `;
 
-  // Always show the group
-  const pmtMonthGroup = document.getElementById('pmtMonthGroup');
-  if (pmtMonthGroup) pmtMonthGroup.style.display = 'block';
+    const user = Auth.getUser();
+    const canSetMonth = user && (user.role === CONFIG.ROLES.CPO || user.role === CONFIG.ROLES.ADMIN);
+
+    // Always show the group
+    const pmtMonthGroup = document.getElementById('pmtMonthGroup');
+    if (pmtMonthGroup) pmtMonthGroup.style.display = 'block';
 
     // Set values
     document.getElementById('newStatus').value = voucher.status || 'Unpaid';
@@ -827,57 +1101,17 @@ const Vouchers = {
     const monthEl = document.getElementById('newPmtMonth');
 
     const updateMonthRequirement = () => {
-        const st = statusEl.value;
-        monthEl.required = (canSetMonth && st === 'Paid');
+      const st = statusEl.value;
+      monthEl.required = (canSetMonth && st === 'Paid');
     };
 
     statusEl.onchange = updateMonthRequirement;
     updateMonthRequirement();
 
     document.getElementById('statusModal').classList.add('active');
-    },
-
-    async saveStatus() {
-    if (!this.selectedVoucher) return;
-
-    const user = Auth.getUser();
-    const canSetMonth = user && (user.role === CONFIG.ROLES.CPO || user.role === CONFIG.ROLES.ADMIN);
-
-    const status = document.getElementById('newStatus').value;
-    const pmtMonth = canSetMonth ? document.getElementById('newPmtMonth').value : null;
-
-    // Enforce: Paid must have Payment Month (CPO/Admin)
-    if (canSetMonth && status === 'Paid' && (!pmtMonth || !pmtMonth.trim())) {
-        Utils.showToast('Payment Month is required when status is PAID', 'error');
-        return;
-    }
-
-    this.showLoading(true);
-
-    try {
-        const result = await API.updateStatus(this.selectedVoucher.rowIndex, status, pmtMonth);
-
-        if (result.success) {
-        Utils.showToast(result.message || 'Status updated', 'success');
-        this.closeModal('statusModal');
-        await this.loadVouchers();
-        } else {
-        Utils.showToast(result.error || 'Failed to update status', 'error');
-        }
-    } catch (e) {
-        console.error('saveStatus error:', e);
-        Utils.showToast('Error updating status', 'error');
-    } finally {
-        this.showLoading(false);
-    }
-    },
-
-  openBatchStatusModal() {
-    document.getElementById('batchControlNumber').value = '';
-    document.getElementById('batchStatus').value = 'Paid';
-    document.getElementById('batchPmtMonth').value = '';
-    document.getElementById('batchStatusModal').classList.add('active');
   },
+
+
 
   async saveBatchStatus() {
     const cn = document.getElementById('batchControlNumber').value.trim();
@@ -940,8 +1174,26 @@ const Vouchers = {
 
   // ===== Deletion workflow (MODAL-BASED) =====
   async requestDelete(rowIndex) {
-    const voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
-    if (!voucher) return Utils.showToast('Voucher not found', 'error');
+    let voucher;
+
+    // If global search mode, fetch from 2026
+    if (this.isGlobalSearchMode) {
+      this.showLoading(true);
+      const r = await this.get2026VoucherForAction(rowIndex);
+      this.showLoading(false);
+      if (!r.success) {
+        Utils.showToast(r.error || 'Voucher not found', 'error');
+        return;
+      }
+      voucher = r.voucher;
+    } else {
+      // Normal mode
+      voucher = this.vouchers.find(v => v.rowIndex === rowIndex);
+      if (!voucher) {
+        Utils.showToast('Voucher not found', 'error');
+        return;
+      }
+    }
 
     this.deleteTargetVoucher = voucher;
 
@@ -957,12 +1209,12 @@ const Vouchers = {
     }
 
     info.innerHTML = `
-      <p><strong>Voucher No:</strong> ${voucher.accountOrMail || '-'}</p>
-      <p><strong>Payee:</strong> ${voucher.payee || '-'}</p>
-      <p><strong>Amount:</strong> ${Utils.formatCurrency(voucher.grossAmount || 0)}</p>
-      <p><strong>Status:</strong> ${Utils.getStatusBadge(voucher.status || '')}</p>
-      ${isReleased ? `<p><strong>Control No:</strong> ${voucher.controlNumber}</p>` : ''}
-    `;
+    <p><strong>Voucher No:</strong> ${voucher.accountOrMail || '-'}</p>
+    <p><strong>Payee:</strong> ${voucher.payee || '-'}</p>
+    <p><strong>Amount:</strong> ${Utils.formatCurrency(voucher.grossAmount || 0)}</p>
+    <p><strong>Status:</strong> ${Utils.getStatusBadge(voucher.status || '')}</p>
+    ${isReleased ? `<p><strong>Control No:</strong> ${voucher.controlNumber}</p>` : ''}
+  `;
 
     approvalText.innerHTML = isReleased
       ? '<strong>⚠️ This voucher has been RELEASED.</strong> Deletion requires approval from <strong>CPO or Admin</strong>.'
@@ -1006,33 +1258,63 @@ const Vouchers = {
     }
   },
 
-  async cancelDeleteRequest(rowIndex) {
-    const confirmed = await Utils.confirm(
-      'Undo/cancel this deletion request?\n\nThe voucher will be restored to its previous status.',
-      'Cancel Deletion Request'
-    );
-    if (!confirmed) return;
+  async rejectDelete(rowIndex) {
+    let v;
 
-    this.showLoading(true);
-
-    try {
-      const result = await API.cancelDeleteRequest(rowIndex);
-      if (result.success) {
-        Utils.showToast(result.message || 'Request cancelled', 'success');
-        await this.loadVouchers();
-        if (this.pendingDeletionsLoaded) await this.loadPendingDeletions();
-      } else {
-        Utils.showToast(result.error || 'Failed to cancel request', 'error');
-      }
-    } catch (e) {
-      console.error('cancelDeleteRequest error:', e);
-      Utils.showToast('Error cancelling request', 'error');
-    } finally {
+    // Add global search mode check
+    if (this.isGlobalSearchMode) {
+      this.showLoading(true);
+      const r = await this.get2026VoucherForAction(rowIndex);
       this.showLoading(false);
+      if (!r.success) {
+        Utils.showToast(r.error || 'Voucher not found', 'error');
+        return;
+      }
+      v = r.voucher;
+    } else {
+      // Normal mode - check pending deletions first, then vouchers
+      v = this.pendingDeletions.find(x => x.rowIndex === rowIndex) ||
+        this.vouchers.find(x => x.rowIndex === rowIndex);
+      if (!v) {
+        Utils.showToast('Voucher not found', 'error');
+        return;
+      }
     }
+
+    this.rejectTargetVoucher = v;
+
+    const info = document.getElementById('rejectVoucherInfo');
+    const reasonEl = document.getElementById('rejectReason');
+    if (!info || !reasonEl) {
+      Utils.showToast('Reject modal elements missing', 'error');
+      return;
+    }
+
+    info.innerHTML = `
+    <p><strong>Voucher No:</strong> ${v.accountOrMail || '-'}</p>
+    <p><strong>Payee:</strong> ${v.payee || '-'}</p>
+    <p><strong>Amount:</strong> ${Utils.formatCurrency(v.grossAmount || 0)}</p>
+  `;
+    reasonEl.value = '';
+
+    document.getElementById('rejectDeleteModal').classList.add('active');
   },
 
   async approveDelete(rowIndex) {
+    // Add this check at the very beginning
+    let voucher;
+    if (this.isGlobalSearchMode) {
+      this.showLoading(true);
+      const r = await this.get2026VoucherForAction(rowIndex);
+      this.showLoading(false);
+      if (!r.success) {
+        Utils.showToast(r.error || 'Voucher not found', 'error');
+        return;
+      }
+      voucher = r.voucher;
+    }
+
+    // Then continue with your existing code
     const confirmed = await Utils.confirm('Approve permanent deletion? This cannot be undone.', 'Approve Deletion');
     if (!confirmed) return;
 
@@ -1056,26 +1338,6 @@ const Vouchers = {
     } finally {
       this.showLoading(false);
     }
-  },
-
-  rejectDelete(rowIndex) {
-    const v = this.pendingDeletions.find(x => x.rowIndex === rowIndex) || this.vouchers.find(x => x.rowIndex === rowIndex);
-    if (!v) return Utils.showToast('Voucher not found', 'error');
-
-    this.rejectTargetVoucher = v;
-
-    const info = document.getElementById('rejectVoucherInfo');
-    const reasonEl = document.getElementById('rejectReason');
-    if (!info || !reasonEl) return Utils.showToast('Reject modal elements missing', 'error');
-
-    info.innerHTML = `
-      <p><strong>Voucher No:</strong> ${v.accountOrMail || '-'}</p>
-      <p><strong>Payee:</strong> ${v.payee || '-'}</p>
-      <p><strong>Amount:</strong> ${Utils.formatCurrency(v.grossAmount || 0)}</p>
-    `;
-    reasonEl.value = '';
-
-    document.getElementById('rejectDeleteModal').classList.add('active');
   },
 
   async submitRejectDelete() {
@@ -1103,6 +1365,32 @@ const Vouchers = {
     } catch (e) {
       console.error('submitRejectDelete error:', e);
       Utils.showToast('Error rejecting deletion', 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  async cancelDeleteRequest(rowIndex) {
+    const confirmed = await Utils.confirm(
+      'Undo/cancel this deletion request?\n\nThe voucher will be restored to its previous status.',
+      'Cancel Deletion Request'
+    );
+    if (!confirmed) return;
+
+    this.showLoading(true);
+
+    try {
+      const result = await API.cancelDeleteRequest(rowIndex);
+      if (result.success) {
+        Utils.showToast(result.message || 'Request cancelled', 'success');
+        await this.loadVouchers();
+        if (this.pendingDeletionsLoaded) await this.loadPendingDeletions();
+      } else {
+        Utils.showToast(result.error || 'Failed to cancel request', 'error');
+      }
+    } catch (e) {
+      console.error('cancelDeleteRequest error:', e);
+      Utils.showToast('Error cancelling request', 'error');
     } finally {
       this.showLoading(false);
     }
@@ -1202,53 +1490,53 @@ const Vouchers = {
 
   // ===== Enhanced Release Workflow =====
   openReleaseModal() {
-  const user = Auth.getUser();
-  if (!user) return;
+    const user = Auth.getUser();
+    if (!user) return;
 
-  this.isPayableUnit = [CONFIG.ROLES.PAYABLE_STAFF, CONFIG.ROLES.PAYABLE_HEAD, CONFIG.ROLES.ADMIN].includes(user.role);
-  this.isCPO = (user.role === CONFIG.ROLES.CPO);
+    this.isPayableUnit = [CONFIG.ROLES.PAYABLE_STAFF, CONFIG.ROLES.PAYABLE_HEAD, CONFIG.ROLES.ADMIN].includes(user.role);
+    this.isCPO = (user.role === CONFIG.ROLES.CPO);
 
-  // reset search results
-  this.releaseSearchResults = [];
+    // reset search results
+    this.releaseSearchResults = [];
 
-  // IMPORTANT: prefill from main-table selected vouchers
-  this.selectedForRelease = (this.selectedVouchers || [])
-    .map(rowIndex => this.vouchers.find(v => v.rowIndex === rowIndex))
-    .filter(Boolean)
-    .map(v => ({ ...v, sourceYear: '2026' })); // ensure sourceYear exists
+    // IMPORTANT: prefill from main-table selected vouchers
+    this.selectedForRelease = (this.selectedVouchers || [])
+      .map(rowIndex => this.vouchers.find(v => v.rowIndex === rowIndex))
+      .filter(Boolean)
+      .map(v => ({ ...v, sourceYear: '2026' })); // ensure sourceYear exists
 
-  // reset UI fields
-  document.getElementById('releaseSearchInput').value = '';
-  document.getElementById('releaseStatusFilter').value = 'Unpaid';
-  document.getElementById('releaseSearchResults').innerHTML =
-    '<p class="text-muted text-center">Enter search criteria and click Search</p>';
+    // reset UI fields
+    document.getElementById('releaseSearchInput').value = '';
+    document.getElementById('releaseStatusFilter').value = 'Unpaid';
+    document.getElementById('releaseSearchResults').innerHTML =
+      '<p class="text-muted text-center">Enter search criteria and click Search</p>';
 
-  document.getElementById('releaseControlNumber').value = '';
-  document.getElementById('releaseTargetUnit').value = '';
-  document.getElementById('customTargetUnit').value = '';
-  document.getElementById('releasePurpose').value = '';
+    document.getElementById('releaseControlNumber').value = '';
+    document.getElementById('releaseTargetUnit').value = '';
+    document.getElementById('customTargetUnit').value = '';
+    document.getElementById('releasePurpose').value = '';
 
-  // show/hide fields based on role
-  const cnGroup = document.getElementById('controlNumberGroup');
-  const purposeGroup = document.getElementById('releasePurposeGroup');
+    // show/hide fields based on role
+    const cnGroup = document.getElementById('controlNumberGroup');
+    const purposeGroup = document.getElementById('releasePurposeGroup');
 
-  if (this.isCPO) {
-    cnGroup?.classList.add('hidden');
-    purposeGroup?.classList.remove('hidden');
-  } else {
-    cnGroup?.classList.remove('hidden');
-    purposeGroup?.classList.add('hidden');
-  }
+    if (this.isCPO) {
+      cnGroup?.classList.add('hidden');
+      purposeGroup?.classList.remove('hidden');
+    } else {
+      cnGroup?.classList.remove('hidden');
+      purposeGroup?.classList.add('hidden');
+    }
 
-  // show step 1 by default
-  document.getElementById('releaseStep1').classList.remove('hidden');
-  document.getElementById('releaseStep2').classList.add('hidden');
+    // show step 1 by default
+    document.getElementById('releaseStep1').classList.remove('hidden');
+    document.getElementById('releaseStep2').classList.add('hidden');
 
-  // update selected display (this makes them appear immediately)
-  this.updateReleaseSelectedDisplay();
+    // update selected display (this makes them appear immediately)
+    this.updateReleaseSelectedDisplay();
 
-  document.getElementById('releaseModal').classList.add('active');
-},
+    document.getElementById('releaseModal').classList.add('active');
+  },
 
   handleTargetUnitChange() {
     const target = document.getElementById('releaseTargetUnit').value;
@@ -1352,9 +1640,7 @@ const Vouchers = {
     if (!container) return;
 
     const countEl = document.getElementById('voucherCount');
-    if (countEl) {
-      countEl.textContent = `Found ${this.vouchers.length} voucher(s) across all years`;
-    }
+    if (countEl) countEl.textContent = `Found ${this.vouchers.length} voucher(s) across all years`;
 
     if (!this.vouchers.length) {
       container.innerHTML = Components.getEmptyState('No vouchers found across all years', 'fa-search');
@@ -1362,18 +1648,28 @@ const Vouchers = {
       return;
     }
 
+    const user = Auth.getUser();
+    const canSelect = user && [
+      CONFIG.ROLES.PAYABLE_STAFF,
+      CONFIG.ROLES.PAYABLE_HEAD,
+      CONFIG.ROLES.ADMIN,
+      CONFIG.ROLES.CPO
+    ].includes(user.role);
+
     let html = `
       <div class="table-container">
         <table>
           <thead>
             <tr>
+              ${canSelect ? `<th><input type="checkbox" id="selectAll" onchange="Vouchers.toggleSelectAll()"></th>` : ''}
               <th>Year</th>
               <th>Voucher No.</th>
               <th>Payee</th>
               <th>Particular</th>
               <th>Gross Amount</th>
-              <th>Status</th>
+              <th>Category</th>
               <th>Control No.</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -1381,30 +1677,40 @@ const Vouchers = {
     `;
 
     this.vouchers.forEach(v => {
-      const yearBadgeClass = v.sourceYear === '2026' ? 'badge-paid' : 'badge-unpaid';
+      const year = v.sourceYear || '2026';
+      const is2026 = year === '2026';
+      const yearBadgeClass = is2026 ? 'badge-paid' : 'badge-unpaid';
 
       html += `
         <tr>
-          <td><span class="badge ${yearBadgeClass}">${v.sourceYear || '-'}</span></td>
+          ${canSelect ? `
+            <td>
+              ${is2026
+            ? `<input type="checkbox" class="voucher-checkbox" value="${v.rowIndex}" onchange="Vouchers.updateSelection()">`
+            : `<input type="checkbox" disabled title="Archive records are not selectable">`
+          }
+            </td>
+          ` : ''}
+
+          <td><span class="badge ${yearBadgeClass}">${year}</span></td>
           <td><strong>${v.accountOrMail || '-'}</strong></td>
           <td title="${v.payee || ''}">${Utils.truncate(v.payee || '-', 20)}</td>
           <td title="${v.particular || ''}">${Utils.truncate(v.particular || '-', 25)}</td>
-          <td>${Utils.formatCurrency(v.grossAmount)}</td>
-          <td>${Utils.getStatusBadge(v.status)}</td>
+          <td>${Utils.formatCurrency(v.grossAmount || 0)}</td>
+          <td>${v.categories || '-'}</td>
           <td>${v.controlNumber || '-'}</td>
+          <td>${Utils.getStatusBadge(v.status || '')}</td>
+
           <td>
-            <button class="btn btn-sm btn-secondary"
-                    onclick="Vouchers.viewVoucherByYear(${v.rowIndex}, '${v.sourceYear}')"
-                    title="View">
-              <i class="fas fa-eye"></i>
-            </button>
-            ${
-              v.sourceYear === '2026'
-                ? `<button class="btn btn-sm btn-primary" onclick="Vouchers.editVoucher(${v.rowIndex})" title="Edit">
-                    <i class="fas fa-edit"></i>
-                  </button>`
-                : ''
-            }
+            <div class="action-buttons">
+              <button class="btn btn-sm btn-secondary"
+                      onclick="Vouchers.viewVoucherByYear(${v.rowIndex}, '${year}')"
+                      title="View">
+                <i class="fas fa-eye"></i>
+              </button>
+
+              ${is2026 ? this.getActionButtons(v) : ''}
+            </div>
           </td>
         </tr>
       `;
@@ -1498,6 +1804,27 @@ const Vouchers = {
       this.showLoading(false);
     }
   },
+
+  // Add this NEW function after viewVoucherByYear()
+  async get2026VoucherForAction(rowIndex) {
+    // In normal mode, use current page cache first
+    if (!this.isGlobalSearchMode) {
+      const local = this.vouchers.find(v => v.rowIndex === rowIndex);
+      if (local) return { success: true, voucher: local };
+    }
+
+    // In global mode, always fetch the authoritative 2026 row
+    try {
+      const res = await API.getVoucherByRow(rowIndex, '2026');
+      return res.success
+        ? { success: true, voucher: res.voucher }
+        : { success: false, error: res.error || 'Voucher not found' };
+    } catch (e) {
+      console.error('get2026VoucherForAction error:', e);
+      return { success: false, error: 'Error fetching voucher' };
+    }
+  },
+
 
   clearFilters() {
     document.getElementById('statusFilter').value = 'All';
@@ -1705,17 +2032,17 @@ const Vouchers = {
     let purpose = '';
 
     if (this.isCPO) {
-        purpose = document.getElementById('releasePurpose').value.trim();
-        if (!purpose) return Utils.showToast('Purpose is required for CPO release', 'error');
+      purpose = document.getElementById('releasePurpose').value.trim();
+      if (!purpose) return Utils.showToast('Purpose is required for CPO release', 'error');
 
-        if (this.isCPO) {
-    const cnSet = new Set(this.selectedForRelease.map(v => (v.controlNumber || '').trim()).filter(Boolean));
-    if (cnSet.size !== 1) {
-        Utils.showToast('CPO release requires all selected vouchers to have the SAME Control Number.', 'error');
-        return;
-    }
-    controlNumber = [...cnSet][0];
-    }
+      if (this.isCPO) {
+        const cnSet = new Set(this.selectedForRelease.map(v => (v.controlNumber || '').trim()).filter(Boolean));
+        if (cnSet.size !== 1) {
+          Utils.showToast('CPO release requires all selected vouchers to have the SAME Control Number.', 'error');
+          return;
+        }
+        controlNumber = [...cnSet][0];
+      }
 
       // CPO uses existing CN from vouchers
       if (this.selectedForRelease[0].controlNumber) controlNumber = this.selectedForRelease[0].controlNumber;
@@ -1792,18 +2119,196 @@ const Vouchers = {
       this.saveVoucher();
     });
 
-    // NET live recalculation
+    // NET live recalculation (ONLY DEFINE ONCE!)
     const recalcNet = () => {
       const gross = parseFloat(document.getElementById('formGrossAmount').value) || 0;
       const vat = parseFloat(document.getElementById('formVat').value) || 0;
       const wht = parseFloat(document.getElementById('formWht').value) || 0;
       const stamp = parseFloat(document.getElementById('formStampDuty').value) || 0;
-      document.getElementById('formNet').value = (gross - (vat + wht + stamp)).toFixed(2);
+      const net = gross - (vat + wht + stamp);
+      document.getElementById('formNet').value = net.toFixed(2);
+
+      // Update display if element exists
+      const netDisplay = document.getElementById('formNetDisplay');
+      if (netDisplay) {
+        netDisplay.textContent = Utils.formatNumber ? Utils.formatNumber(net) : net.toFixed(2);
+      }
     };
+
     ['formGrossAmount', 'formVat', 'formWht', 'formStampDuty'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', recalcNet);
     });
+  },
+
+  // ===== Payment Type Handling =====
+  setupPaymentTypeHandlers() {
+    const paymentTypes = document.querySelectorAll('input[name="paymentType"]');
+    const otherPartGroup = document.getElementById('otherPartPaymentGroup');
+    const contractSumGroup = document.getElementById('contractSumGroup');
+    const contractSumRequired = document.getElementById('contractSumRequired');
+
+    paymentTypes.forEach(radio => {
+      radio.addEventListener('change', () => {
+        const value = radio.value;
+
+        // Show/hide other part-payment dropdown
+        if (value === 'otherPart') {
+          otherPartGroup?.classList.remove('hidden');
+        } else {
+          otherPartGroup?.classList.add('hidden');
+        }
+
+        // Contract Sum required for First Part-Payment
+        if (value === 'firstPart') {
+          contractSumGroup?.classList.add('required-field');
+          if (contractSumRequired) contractSumRequired.style.display = 'inline';
+          const contractSumInput = document.getElementById('formContractSum');
+          if (contractSumInput) contractSumInput.required = true;
+        } else {
+          contractSumGroup?.classList.remove('required-field');
+          if (contractSumRequired) contractSumRequired.style.display = 'none';
+          const contractSumInput = document.getElementById('formContractSum');
+          if (contractSumInput) contractSumInput.required = false;
+        }
+
+        // Update particular hint
+        this.updateParticularHint(value);
+
+        // Auto-prefix particular if empty
+        this.autoFillParticular(value);
+      });
+    });
+
+    // Handle other part-payment type change
+    const otherPartType = document.getElementById('otherPartPaymentType');
+    if (otherPartType) {
+      otherPartType.addEventListener('change', () => {
+        this.autoFillParticular('otherPart');
+      });
+    }
+  },
+
+  updateParticularHint(paymentType) {
+    const hint = document.getElementById('particularHint');
+    const note = document.getElementById('particularNote');
+
+    const hints = {
+      'lumpsum': '',
+      'firstPart': '(Must start with "First Part-Payment of" or similar)',
+      'balance': '(Must start with "Balance Payment of" or similar)',
+      'otherPart': '(Must indicate which part-payment, e.g., "Second Part-Payment of")'
+    };
+
+    if (hint) hint.textContent = hints[paymentType] || '';
+
+    if (note) {
+      note.textContent = paymentType !== 'lumpsum'
+        ? 'The particular will be validated based on your payment type selection.'
+        : '';
+    }
+  },
+
+  autoFillParticular(paymentType) {
+    const particular = document.getElementById('formParticular');
+    if (!particular || particular.value.trim() !== '') return;
+
+    const prefixes = {
+      'firstPart': 'First Part-Payment of ',
+      'balance': 'Balance Payment of ',
+      'otherPart': this.getOtherPartPrefix()
+    };
+
+    if (prefixes[paymentType]) {
+      particular.value = prefixes[paymentType];
+      particular.focus();
+      particular.setSelectionRange(particular.value.length, particular.value.length);
+    }
+  },
+
+  getOtherPartPrefix() {
+    const type = document.getElementById('otherPartPaymentType')?.value;
+    const prefixes = {
+      'second': 'Second Part-Payment of ',
+      'third': 'Third Part-Payment of ',
+      'fourth': 'Fourth Part-Payment of ',
+      'fifth': 'Fifth Part-Payment of '
+    };
+    return prefixes[type] || '';
+  },
+
+  validateParticular() {
+    const paymentType = document.querySelector('input[name="paymentType"]:checked')?.value;
+    const particular = document.getElementById('formParticular').value.trim().toLowerCase();
+
+    if (paymentType === 'lumpsum' || !paymentType) return { valid: true };
+
+    // First Part-Payment validation
+    if (paymentType === 'firstPart') {
+      const validPatterns = [
+        /^first\s*part[-\s]?p(ay)?m(en)?t/i,
+        /^1st\s*part[-\s]?p(ay)?m(en)?t/i,
+        /^first\s*pt[-\s]?pmt/i,
+        /^1st\s*pt[-\s]?pmt/i
+      ];
+
+      const isValid = validPatterns.some(pattern => pattern.test(particular));
+      if (!isValid) {
+        return {
+          valid: false,
+          error: 'For First Part-Payment, the particular must begin with "First Part-Payment of" (or similar like "1st pt-pmt of")'
+        };
+      }
+    }
+
+    // Balance Payment validation
+    if (paymentType === 'balance') {
+      const validPatterns = [
+        /^bal(ance)?\s*p(ay)?m(en)?t/i,
+        /^final\s*p(ay)?m(en)?t/i,
+        /^fnl\s*p(ay)?m(en)?t/i,
+        /^bal\s*pmt/i
+      ];
+
+      const isValid = validPatterns.some(pattern => pattern.test(particular));
+      if (!isValid) {
+        return {
+          valid: false,
+          error: 'For Balance Payment, the particular must begin with "Balance Payment of" (or similar like "Bal pmt of", "Final payment of")'
+        };
+      }
+    }
+
+    // Other Part-Payment validation
+    if (paymentType === 'otherPart') {
+      const otherType = document.getElementById('otherPartPaymentType')?.value;
+      if (!otherType) {
+        return { valid: false, error: 'Please select the part-payment type' };
+      }
+
+      if (otherType !== 'custom') {
+        const typePatterns = {
+          'second': /^(2nd|second)\s*part[-\s]?p(ay)?m(en)?t/i,
+          'third': /^(3rd|third)\s*part[-\s]?p(ay)?m(en)?t/i,
+          'fourth': /^(4th|fourth)\s*part[-\s]?p(ay)?m(en)?t/i,
+          'fifth': /^(5th|fifth)\s*part[-\s]?p(ay)?m(en)?t/i
+        };
+
+        const pattern = typePatterns[otherType];
+        if (pattern && !pattern.test(particular)) {
+          return {
+            valid: false,
+            error: `For ${otherType} part-payment, the particular must begin with "${otherType} Part-Payment of" (or similar)`
+          };
+        }
+      }
+    }
+
+    return { valid: true };
+  },
+
+  printVoucher() {
+    window.print();
   },
 
   closeModal(id) {
@@ -1814,6 +2319,8 @@ const Vouchers = {
     const loader = document.getElementById('loadingOverlay');
     if (loader) loader.classList.toggle('hidden', !show);
   }
-};
 
+}; // <-- This closes the Vouchers object
+
+// This line stays OUTSIDE the object
 document.addEventListener('DOMContentLoaded', () => Vouchers.init());

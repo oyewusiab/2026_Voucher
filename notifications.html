@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -27,15 +28,34 @@
       transition: var(--transition);
     }
 
-    .notification-item:hover { box-shadow: var(--shadow); }
+    .notification-item:hover {
+      box-shadow: var(--shadow);
+    }
 
-    .notification-unread { background: #f0f7ff; font-weight: 500; }
-    .notification-read { opacity: 0.8; }
+    .notification-unread {
+      background: #f0f7ff;
+      font-weight: 500;
+    }
 
-    .notification-success { border-left-color: var(--success-color); }
-    .notification-warning { border-left-color: var(--warning-color); }
-    .notification-danger  { border-left-color: var(--danger-color); }
-    .notification-info    { border-left-color: var(--info-color); }
+    .notification-read {
+      opacity: 0.8;
+    }
+
+    .notification-success {
+      border-left-color: var(--success-color);
+    }
+
+    .notification-warning {
+      border-left-color: var(--warning-color);
+    }
+
+    .notification-danger {
+      border-left-color: var(--danger-color);
+    }
+
+    .notification-info {
+      border-left-color: var(--info-color);
+    }
 
     .notification-icon {
       width: 40px;
@@ -48,17 +68,52 @@
       flex-shrink: 0;
     }
 
-    .notification-success .notification-icon { background: #d4edda; color: var(--success-color); }
-    .notification-warning .notification-icon { background: #fff3cd; color: #856404; }
-    .notification-danger  .notification-icon { background: #f8d7da; color: var(--danger-color); }
-    .notification-info    .notification-icon { background: #d1ecf1; color: var(--info-color); }
+    .notification-success .notification-icon {
+      background: #d4edda;
+      color: var(--success-color);
+    }
 
-    .notification-content { flex: 1; }
-    .notification-title { font-weight: 600; color: var(--text-dark); margin-bottom: 5px; }
-    .notification-message { color: var(--text-light); font-size: 14px; margin-bottom: 8px; }
-    .notification-time { font-size: 12px; color: var(--text-muted); }
+    .notification-warning .notification-icon {
+      background: #fff3cd;
+      color: #856404;
+    }
 
-    .notification-actions { display: flex; gap: 5px; flex-shrink: 0; }
+    .notification-danger .notification-icon {
+      background: #f8d7da;
+      color: var(--danger-color);
+    }
+
+    .notification-info .notification-icon {
+      background: #d1ecf1;
+      color: var(--info-color);
+    }
+
+    .notification-content {
+      flex: 1;
+    }
+
+    .notification-title {
+      font-weight: 600;
+      color: var(--text-dark);
+      margin-bottom: 5px;
+    }
+
+    .notification-message {
+      color: var(--text-light);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .notification-time {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .notification-actions {
+      display: flex;
+      gap: 5px;
+      flex-shrink: 0;
+    }
 
     /* Nav badge for sidebar */
     .nav-badge {
@@ -130,7 +185,7 @@
             </button>
 
             <button class="btn btn-sm btn-secondary" id="actionItemsSettingsBtn" style="display:none;"
-                    onclick="ActionItems.openSettings()">
+              onclick="ActionItems.openSettings()">
               <i class="fas fa-cog"></i> Settings
             </button>
           </div>
@@ -175,6 +230,11 @@
   </div>
 
   <!-- Scripts (each included ONCE) -->
+  <!-- Firebase SDKs (Compat version) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/activity-tracker.js"></script>
@@ -197,4 +257,5 @@
 
   <script src="js/footer.js"></script>
 </body>
+
 </html>

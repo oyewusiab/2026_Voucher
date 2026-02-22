@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 <body>
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay">
@@ -17,7 +19,7 @@
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
-            
+
         </aside>
 
         <!-- Main Content -->
@@ -121,6 +123,8 @@
                     </div>
                 </div>
             </div>
+        </main>
+    </div>
 
     <!-- Additional Styles for Dashboard -->
     <style>
@@ -130,7 +134,7 @@
                 grid-template-columns: 1fr !important;
             }
         }
-        
+
         /* Nav Badge for pending items */
         .nav-badge {
             background: var(--danger-color);
@@ -140,12 +144,12 @@
             border-radius: 10px;
             margin-left: auto;
         }
-        
+
         .nav-item {
             display: flex;
             align-items: center;
         }
-        
+
         /* Mobile menu */
         @media (max-width: 992px) {
             .menu-toggle {
@@ -161,21 +165,49 @@
                 border-radius: 5px;
                 cursor: pointer;
             }
-            
+
             .main-content {
                 padding-top: 70px;
             }
         }
     </style>
 
-    <script src="js/config.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/activity-tracker.js"></script>
-    <script src="js/components.js"></script>
-    <script src="js/notifications.js"></script>
-    <script src="js/chat.js"></script>
-    <script src="js/dashboard.js"></script>
+    <!-- Scripts -->
+    <!-- Firebase SDKs (Compat version) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+
+    <script src="js/config.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/api.js" defer></script>
+    <script src="js/activity-tracker.js" defer></script>
+    <script src="js/components.js" defer></script>
+    <script src="js/notifications.js" defer></script>
+    <script src="js/chat.js" defer></script>
+    <script src="js/dashboard.js" defer></script>
+
+    <!-- Check for Dashboard Announcements -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Dashboard loaded - checking for announcements');
+
+            // Check for dashboard announcements after page loads
+            setTimeout(() => {
+                if (typeof Notifications !== 'undefined') {
+                    console.log('Notifications module found - checking announcements');
+                    Notifications.checkAnnouncements('dashboard');
+                } else {
+                    console.error('Notifications module not loaded');
+                }
+            }, 1500);
+        });
+    </script>
+
     <script src="js/footer.js"></script>
 </body>
+
 </html>

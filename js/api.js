@@ -47,6 +47,12 @@
         }
 
         if (result?.error && String(result.error).includes("Session expired")) {
+          console.error("API Error: Session expired reported by backend for action:", action);
+          console.log("Current Token being used:", token);
+
+          // Debug alert for user
+          alert("BACKEND SESSION ERROR\n\nAction: " + action + "\nEmail/Token: " + token + "\n\nIf this looks correct, please ensure this email is listed in your Users Spreadsheet.");
+
           Auth.clearSession?.();
           window.location.href = "index.html";
           return { success: false, error: "Session expired" };
@@ -92,6 +98,12 @@
         }
 
         if (result?.error && String(result.error).includes("Session expired")) {
+          console.error("API Error: Session expired reported by backend for action:", action);
+          console.log("Current Token being used:", token);
+
+          // Debug alert for user
+          alert("BACKEND SESSION ERROR\n\nAction: " + action + "\nEmail/Token: " + token + "\n\nIf this looks correct, please ensure this email is listed in your Users Spreadsheet.");
+
           Auth.clearSession?.();
           window.location.href = "index.html";
           return { success: false, error: "Session expired" };
@@ -296,6 +308,28 @@
 
     async saveActionItemSettings(settings) {
       return await this.post("saveActionItemSettings", { settings });
+    },
+
+    // ==================== ANNOUNCEMENT API FUNCTIONS ====================
+
+    // Send announcement (Admin only)
+    async sendAnnouncement(data) {
+      return await this.post("sendAnnouncement", { data });
+    },
+
+    // Get all announcements (Admin)
+    async getAnnouncements() {
+      return await this.get("getAnnouncements");
+    },
+
+    // Get active announcements for a specific page
+    async getActiveAnnouncements(page, username) {
+      return await this.get("getActiveAnnouncements", { page, username });
+    },
+
+    // Delete announcement
+    async deleteAnnouncement(id) {
+      return await this.post("deleteAnnouncement", { id });
     },
 
     // ==================== USERS / SYSTEM ====================
