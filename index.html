@@ -169,18 +169,12 @@
                             <i class="fas fa-sign-in-alt"></i> Sign In
                         </button>
 
-                        <div class="d-flex align-items-center my-3">
-                            <hr class="flex-grow-1">
-                            <span class="mx-3 text-muted" style="font-size: 14px;">OR</span>
-                            <hr class="flex-grow-1">
+                        <div class="text-center my-3">
+                            <button type="button" id="resetBtn" class="btn btn-link btn-sm text-danger"
+                                style="text-decoration: none;">
+                                <i class="fas fa-undo"></i> Reset Application Cache (Fix Login Loop)
+                            </button>
                         </div>
-
-                        <button type="button" id="googleLoginBtn" class="btn btn-outline-dark w-100"
-                            style="height: 50px; border-radius: 12px; font-weight: 600;">
-                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google"
-                                style="width: 20px; margin-right: 8px;">
-                            Sign in with Google
-                        </button>
 
                     </form>
 
@@ -207,7 +201,7 @@
     <script src="js/firebase-config.js"></script>
 
     <script src="js/config.js"></script>
-    <script src="js/auth.js"></script>
+    <script src="js/auth.js?v=2.1"></script>
     <script src="js/activity-tracker.js"></script>
 
     <script>
@@ -225,6 +219,28 @@
         });
 
         document.addEventListener('DOMContentLoaded', async () => {
+            const resetBtn = document.getElementById('resetBtn');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', async () => {
+                    if (confirm("This will clear all login data and fix the redirect loop. Continue?")) {
+                        localStorage.clear();
+                        if (typeof Auth !== 'undefined' && Auth.logout) {
+                            await Auth.logout();
+                        } else {
+                            window.location.href = "index.html?logout=true";
+                        }
+                    }
+                });
+            }
+
+            // New: Check for explicit logout request to break loops
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('logout') === 'true') {
+                console.log("Explicit logout requested via URL");
+                await Auth.logout();
+                return;
+            }
+
             // First, check if we're returning from a Google Sign-In redirect
             const redirectResult = await Auth.handleGoogleRedirectResult();
             if (redirectResult.success) {
@@ -263,23 +279,6 @@
             }
         });
 
-        const googleLoginBtn = document.getElementById('googleLoginBtn');
-        if (googleLoginBtn) {
-            googleLoginBtn.addEventListener('click', async () => {
-                showLoading(true);
-                googleLoginBtn.disabled = true;
-
-                const result = await Auth.loginWithGoogle();
-
-                if (result.success) {
-                    window.location.href = 'dashboard.html';
-                } else {
-                    showError(result.error || 'Google login failed');
-                    showLoading(false);
-                    googleLoginBtn.disabled = false;
-                }
-            });
-        }
 
         let loadingTimeout;
         function showLoading(show) {
@@ -312,7 +311,7 @@
     </script>
 
     <!-- Add these scripts if not already present -->
-    <script src="js/api.js" defer></script>
+    <script src="js/api.js?v=2.1" defer></script>
     <script src="js/notifications.js" defer></script>
 
     <script>

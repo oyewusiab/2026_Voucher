@@ -4,13 +4,13 @@
  */
 
 const firebaseConfig = {
-    apiKey: "AIzaSyB6XUL8SNKCxLbYJWT9fxwcPJlI7k0fXXI",
-    authDomain: "fmcapv-2026.firebaseapp.com",
-    projectId: "fmcapv-2026",
-    storageBucket: "fmcapv-2026.firebasestorage.app",
-    messagingSenderId: "628828973072",
-    appId: "1:628828973072:web:97ec985553301905778295",
-    measurementId: "G-MFX3PW545R"
+    apiKey: "AIzaSyChOpulIbP58j6UU8_FzAAWPd7oZWGIRx4",
+    authDomain: "voucher-acff6.firebaseapp.com",
+    projectId: "voucher-acff6",
+    storageBucket: "voucher-acff6.firebasestorage.app",
+    messagingSenderId: "1061995667366",
+    appId: "1:1061995667366:web:8392e0487e3d32e04d3967",
+    measurementId: "G-TFMYTYZQPE"
 };
 
 // Initialize Firebase (Compat)
@@ -22,4 +22,4 @@ const FB_STORAGE = firebase.storage();
 const FB_DB = firebase.firestore();
 const FB_ANALYTICS = firebase.analytics();
 
-console.log("Firebase initialized successfully for fmcapv-2026");
+console.log("Firebase initialized successfully for voucher-acff6");

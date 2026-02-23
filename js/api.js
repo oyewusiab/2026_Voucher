@@ -23,6 +23,7 @@
     async get(action, params = {}) {
       try {
         const token = Auth.getToken?.();
+        console.log(`[API] ${action} request with token: ${token}`);
         let url = `${CONFIG.API_URL}?action=${encodeURIComponent(action)}`;
 
         if (token) url += `&token=${encodeURIComponent(token)}`;
@@ -47,14 +48,14 @@
         }
 
         if (result?.error && String(result.error).includes("Session expired")) {
-          console.error("API Error: Session expired reported by backend for action:", action);
-          console.log("Current Token being used:", token);
-
-          // Debug alert for user
-          alert("BACKEND SESSION ERROR\n\nAction: " + action + "\nEmail/Token: " + token + "\n\nIf this looks correct, please ensure this email is listed in your Users Spreadsheet.");
-
-          Auth.clearSession?.();
-          window.location.href = "index.html";
+          console.warn("Backend rejected session:", token);
+          alert(`REJECTED BY BACKEND\n\nUser: ${token}\n\nThis account is not registered or active in the Google Sheet database.\n\nPlease log in with a valid account.`);
+          if (Auth.logout) {
+            Auth.logout();
+          } else {
+            Auth.clearSession?.();
+            window.location.href = "index.html?logout=true";
+          }
           return { success: false, error: "Session expired" };
         }
 
@@ -98,14 +99,14 @@
         }
 
         if (result?.error && String(result.error).includes("Session expired")) {
-          console.error("API Error: Session expired reported by backend for action:", action);
-          console.log("Current Token being used:", token);
-
-          // Debug alert for user
-          alert("BACKEND SESSION ERROR\n\nAction: " + action + "\nEmail/Token: " + token + "\n\nIf this looks correct, please ensure this email is listed in your Users Spreadsheet.");
-
-          Auth.clearSession?.();
-          window.location.href = "index.html";
+          console.warn("Backend rejected session (POST):", token);
+          alert(`REJECTED BY BACKEND\n\nUser: ${token}\n\nThis account is not registered or active in the Google Sheet database.`);
+          if (Auth.logout) {
+            Auth.logout();
+          } else {
+            Auth.clearSession?.();
+            window.location.href = "index.html?logout=true";
+          }
           return { success: false, error: "Session expired" };
         }
 

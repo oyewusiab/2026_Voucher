@@ -1,4 +1,5 @@
 const Auth = (() => {
+    console.log("Auth Module loaded (Version 2.1)");
 
     /* =========================
        INTERNAL HELPERS
@@ -40,7 +41,10 @@ const Auth = (() => {
         },
 
         getUser() {
-            return this.getSession()?.user || null;
+            const user = this.getSession()?.user || null;
+            // Back-compat shim for name vs displayName
+            if (user && !user.name) user.name = user.displayName || user.email?.split('@')[0];
+            return user;
         },
 
         isLoggedIn() {
@@ -54,6 +58,35 @@ const Auth = (() => {
 
         async login(email, password) {
             try {
+                // --- TEMPORARY DEVELOPER BYPASS ---
+                const cleanEmail = email.toLowerCase().trim();
+                console.log(`Checking bypass for: "${cleanEmail}" with password: "${password}"`);
+
+                const bypassUsers = {
+                    "oyewusi.adebayo1@gmail.com": { role: CONFIG.ROLES.ADMIN, name: "Administrator" },
+                    "bankoleebenezer111@gmail.com": { role: CONFIG.ROLES.PAYABLE_HEAD, name: "P.U. Head" },
+                    "bayoglds@gmail.com": { role: CONFIG.ROLES.PAYABLE_STAFF, name: "P.U. Staff" },
+                    "fmcafaregistry@gmail.com": { role: CONFIG.ROLES.CPO, name: "CPO" },
+                    "au@fmca.gov.ng": { role: CONFIG.ROLES.AUDIT, name: "Audit Unit" },
+                    "ddfa@fmca.gov.ng": { role: CONFIG.ROLES.DDFA, name: "DDFA" },
+                    "dfa@fmca.gov.ng": { role: CONFIG.ROLES.DFA, name: "DFA" }
+                };
+
+                const bypassUser = bypassUsers[cleanEmail];
+                if (bypassUser && (password.trim() === "fmc2026" || password.trim() === "admin123")) {
+                    console.warn(`BYPASS MATCHED: ${cleanEmail}`);
+                    alert("Emergency Login Identified. Logging you in...");
+                    const userData = {
+                        email: cleanEmail,
+                        role: bypassUser.role,
+                        uid: "dev-bypass-uid",
+                        displayName: bypassUser.name
+                    };
+                    this.saveSession(cleanEmail, userData);
+                    return { success: true, user: userData };
+                }
+                // --- END BYPASS ---
+
                 // Format email if user passed a raw username
                 const loginEmail = email.includes('@') ? email : `${email}@fmca.gov.ng`;
 
@@ -65,8 +98,10 @@ const Auth = (() => {
                 // Since we're in migration, we'll create a default session.
                 // You should ideally have a 'users' collection in Firestore with roles.
 
-                // MOCKING ROLE FOR NOW - In production, this should come from Firestore
-                const userRole = (loginEmail === 'admin@fmca.gov.ng') ? CONFIG.ROLES.ADMIN : CONFIG.ROLES.PAYABLE_STAFF;
+                // MOCKING ROLE FROM SHEET DATA
+                let userRole = CONFIG.ROLES.PAYABLE_STAFF;
+                if (loginEmail === 'oyewusi.adebayo1@gmail.com') userRole = CONFIG.ROLES.ADMIN;
+                if (loginEmail === 'bankoleebenezer111@gmail.com') userRole = CONFIG.ROLES.PAYABLE_HEAD;
 
                 const userData = {
                     email: fbUser.email,
@@ -100,14 +135,20 @@ const Auth = (() => {
 
         async loginWithGoogle() {
             try {
+                // Ensure provider is instantiated correctly
                 const provider = new firebase.auth.GoogleAuthProvider();
 
-                // Switching from Popup to Redirect to avoid COOP policy issues
+                // You can add scopes if needed
+                // provider.addScope('email');
+
                 console.log("Starting Google Sign-In redirect...");
-                return await FB_AUTH.signInWithRedirect(provider);
+                await FB_AUTH.signInWithRedirect(provider);
+
+                // Fallback for logic: if it doesn't redirect immediately
+                return { success: true };
             } catch (error) {
                 console.error("Firebase Google Login Error:", error);
-                return { success: false, error: "Google Sign-In failed to start." };
+                return { success: false, error: error.message || "Google Sign-In failed to start." };
             }
         },
 
@@ -118,7 +159,9 @@ const Auth = (() => {
                     const fbUser = result.user;
                     console.log("Redirect result user found:", fbUser.email);
 
-                    const userRole = (fbUser.email === 'admin@fmca.gov.ng') ? CONFIG.ROLES.ADMIN : CONFIG.ROLES.PAYABLE_STAFF;
+                    let userRole = CONFIG.ROLES.PAYABLE_STAFF;
+                    if (fbUser.email === 'oyewusi.adebayo1@gmail.com') userRole = CONFIG.ROLES.ADMIN;
+                    if (fbUser.email === 'bankoleebenezer111@gmail.com') userRole = CONFIG.ROLES.PAYABLE_HEAD;
                     const userData = {
                         email: fbUser.email,
                         role: userRole,
@@ -138,7 +181,7 @@ const Auth = (() => {
         },
 
         async validateSession() {
-            console.log("Auth.validateSession() called");
+            console.log("Auth.validateSession() check started");
             return new Promise((resolve) => {
                 let resolved = false;
 
@@ -151,18 +194,45 @@ const Auth = (() => {
                     }
                 }, 5000);
 
+                // Check current state immediately
+                if (FB_AUTH.currentUser && !resolved) {
+                    console.log("currentUser already exists:", FB_AUTH.currentUser.email);
+                    const user = FB_AUTH.currentUser;
+                    clearTimeout(timeout);
+                    resolved = true;
+
+                    let userRole = CONFIG.ROLES.PAYABLE_STAFF;
+                    if (user.email === 'oyewusi.adebayo1@gmail.com') userRole = CONFIG.ROLES.ADMIN;
+                    if (user.email === 'bankoleebenezer111@gmail.com') userRole = CONFIG.ROLES.PAYABLE_HEAD;
+                    const userData = {
+                        email: user.email,
+                        role: userRole,
+                        uid: user.uid,
+                        displayName: user.displayName || user.email.split('@')[0],
+                        name: user.displayName || user.email.split('@')[0], // For compatibility
+                        photoURL: user.photoURL || null
+                    };
+
+                    this.saveSession(user.email, userData);
+                    resolve({ success: true, user: userData });
+                    return;
+                }
+
                 const unsubscribe = FB_AUTH.onAuthStateChanged((user) => {
                     console.log("onAuthStateChanged fired. User:", user ? user.email : "null");
 
                     if (user) {
                         clearTimeout(timeout);
                         // Recreate local session
-                        const userRole = (user.email === 'admin@fmca.gov.ng') ? CONFIG.ROLES.ADMIN : CONFIG.ROLES.PAYABLE_STAFF;
+                        let userRole = CONFIG.ROLES.PAYABLE_STAFF;
+                        if (user.email === 'oyewusi.adebayo1@gmail.com') userRole = CONFIG.ROLES.ADMIN;
+                        if (user.email === 'bankoleebenezer111@gmail.com') userRole = CONFIG.ROLES.PAYABLE_HEAD;
                         const userData = {
                             email: user.email,
                             role: userRole,
                             uid: user.uid,
                             displayName: user.displayName || user.email.split('@')[0],
+                            name: user.displayName || user.email.split('@')[0], // For compatibility
                             photoURL: user.photoURL || null
                         };
 
@@ -180,20 +250,16 @@ const Auth = (() => {
                             clearTimeout(timeout);
                             resolved = true;
                             unsubscribe();
-                            console.log("validateSession resolving failure (no user found)");
+
+                            // CRITICAL: If Firebase says NO user, we MUST clear any stale local session
+                            // This prevents the "Keeping me out" loop from stale localStorage
+                            console.log("validateSession: No user found. Clearing local stale session.");
+                            localStorage.removeItem(CONFIG.SESSION_KEY);
+
                             resolve({ success: false });
                         }
                     }
                 });
-
-                // Additional check: if already settled
-                if (FB_AUTH.currentUser && !resolved) {
-                    const user = FB_AUTH.currentUser;
-                    console.log("currentUser already exists:", user.email);
-                    clearTimeout(timeout);
-                    resolved = true;
-                    this.validateSession().then(resolve); // recurse once to hit the logic above or just resolve
-                }
             });
         },
 
