@@ -48,8 +48,8 @@
         }
 
         if (result?.error && String(result.error).includes("Session expired")) {
-          console.warn("Backend rejected session:", token);
-          alert(`REJECTED BY BACKEND\n\nUser: ${token}\n\nThis account is not registered or active in the Google Sheet database.\n\nPlease log in with a valid account.`);
+          console.warn(`Backend rejected session for action "${action}":`, token);
+          alert(`REJECTED BY BACKEND\n\nAction: ${action}\nUser: ${token}\n\nThis account is not registered or active in the Google Sheet database.\n\nPlease log in with a valid account.`);
           if (Auth.logout) {
             Auth.logout();
           } else {
@@ -99,8 +99,8 @@
         }
 
         if (result?.error && String(result.error).includes("Session expired")) {
-          console.warn("Backend rejected session (POST):", token);
-          alert(`REJECTED BY BACKEND\n\nUser: ${token}\n\nThis account is not registered or active in the Google Sheet database.`);
+          console.warn(`Backend rejected session (POST) for action "${action}":`, token);
+          alert(`REJECTED BY BACKEND (POST)\n\nAction: ${action}\nUser: ${token}\n\nThis account is not registered or active in the Google Sheet database.`);
           if (Auth.logout) {
             Auth.logout();
           } else {

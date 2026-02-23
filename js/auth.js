@@ -59,8 +59,9 @@ const Auth = (() => {
         async login(email, password) {
             try {
                 // --- TEMPORARY DEVELOPER BYPASS ---
-                const cleanEmail = email.toLowerCase().trim();
-                console.log(`Checking bypass for: "${cleanEmail}" with password: "${password}"`);
+                const inputEmail = email.trim();
+                const cleanEmail = inputEmail.toLowerCase();
+                console.log(`Checking bypass for: "${cleanEmail}" (Input: "${inputEmail}") with password: "${password}"`);
 
                 const bypassUsers = {
                     "oyewusi.adebayo1@gmail.com": { role: CONFIG.ROLES.ADMIN, name: "Administrator" },
@@ -75,14 +76,15 @@ const Auth = (() => {
                 const bypassUser = bypassUsers[cleanEmail];
                 if (bypassUser && (password.trim() === "fmc2026" || password.trim() === "admin123")) {
                     console.warn(`BYPASS MATCHED: ${cleanEmail}`);
-                    alert("Emergency Login Identified. Logging you in...");
+                    alert(`Emergency Login Identified for ${inputEmail}. Logging you in...`);
                     const userData = {
-                        email: cleanEmail,
+                        email: inputEmail, // Use original case for the profile
                         role: bypassUser.role,
                         uid: "dev-bypass-uid",
                         displayName: bypassUser.name
                     };
-                    this.saveSession(cleanEmail, userData);
+                    // Use inputEmail exactly as the token for the backend
+                    this.saveSession(inputEmail, userData);
                     return { success: true, user: userData };
                 }
                 // --- END BYPASS ---
